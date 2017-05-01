@@ -8,6 +8,8 @@ CREATE TABLE pgl_ddl_deploy.set_config (
     pass_mixed_ddl BOOLEAN DEFAULT FALSE
     );
 
+SELECT pg_catalog.pg_extension_config_dump('pgl_ddl_deploy.set_config', '');
+
 CREATE TABLE pgl_ddl_deploy.events (
     id SERIAL PRIMARY KEY,
     set_name NAME,
