@@ -1,0 +1,5 @@
+# pgl_ddl_deploy extension
+comment = 'automated ddl deployment using pglogical'
+default_version = '0.1'
+schema = 'pgl_ddl_deploy'
+requires = 'pglogical'
