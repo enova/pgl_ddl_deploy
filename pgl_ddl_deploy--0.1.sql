@@ -368,6 +368,7 @@ EXCEPTION WHEN OTHERS THEN
   END;
 END;
 $BODY$
+SECURITY DEFINER
 LANGUAGE plpgsql;
 $BUILD$
   AS auto_replication_function,
@@ -584,6 +585,7 @@ EXCEPTION WHEN OTHERS THEN
   END;
 END;
 $BODY$
+SECURITY DEFINER
 LANGUAGE plpgsql;
 $BUILD$
   AS auto_replication_drop_function,
@@ -644,6 +646,7 @@ BEGIN
 
 END;
 $BODY$
+SECURITY DEFINER
 LANGUAGE plpgsql;
 $BUILD$
   AS auto_replication_unsupported_function,
