@@ -4,7 +4,7 @@
 CREATE TABLE pgl_ddl_deploy.set_config (
     set_name NAME PRIMARY KEY,
     include_schema_regex TEXT,
-    lock_safe_deployment BOOLEAN DEFAULT TRUE,
+    lock_safe_deployment BOOLEAN DEFAULT FALSE, -- This currently has issues with crashing the worker in a real lock scenario.  DDL will be deployed successfully after lock wait, then worker crashes with Linux error: epoll_ctl() failed: Invalid argument.  Then it will retry to apply the logical change even though it is already deployed, breaking replication.
     pass_mixed_ddl BOOLEAN DEFAULT FALSE
     );
 
