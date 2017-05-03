@@ -112,6 +112,8 @@ WITH vars AS
   v_match_count INT;
   v_excluded_count INT;
   c_exclude_always TEXT = '^(pg_catalog|information_schema|pg_temp|pg_toast|pgl_ddl_deploy|pglogical).*';
+  c_unhandled_msg TEXT = 'Unhandled deployment logged in pgl_ddl_deploy.unhandled';
+  c_exception_msg TEXT = 'Deployment exception logged in pgl_ddl_deploy.exceptions';
 
   --Configurable options in function setup
   c_set_name TEXT = '$BUILD$||set_name||$BUILD$';
@@ -127,7 +129,7 @@ WITH vars AS
                         END);
   c_exec_suffix TEXT = (CASE
                           WHEN c_lock_safe_deployment
-                          THEN '$PGL_DDL_DEPLOY$)'
+                          THEN '$PGL_DDL_DEPLOY$);'
                           ELSE ''
                         END);
   $BUILD$ AS declare_constants
@@ -221,8 +223,9 @@ BEGIN
               SET SEARCH_PATH TO $INNER_BLOCK$||c_search_path||$INNER_BLOCK$;
 
               --Execute DDL
+              EXECUTE $EXEC_SUBSCRIBER$
               $INNER_BLOCK$||c_exec_prefix||v_ddl||c_exec_suffix||$INNER_BLOCK$
-              ;
+              $EXEC_SUBSCRIBER$;
 
               --Log change on subscriber
               INSERT INTO pgl_ddl_deploy.subscriber_logs
@@ -331,7 +334,7 @@ BEGIN
                 than c_max_query_length, but it doesn't hurt.
                 */
                (v_ddl_length >= c_max_query_length));
-            RAISE WARNING 'Unhandled deployment logged in pgl_ddl_deploy.unhandled at %', current_timestamp;
+            RAISE WARNING '%', c_unhandled_msg;
         END IF;
 
       END IF;
@@ -350,7 +353,7 @@ BEGIN
      v_ddl,
      TG_TAG,
      TRUE);
-    RAISE WARNING 'Unhandled deployment logged in pgl_ddl_deploy.unhandled at %', current_timestamp;
+    RAISE WARNING '%', c_unhandled_msg;
   END IF;
 
 /**
@@ -361,7 +364,7 @@ EXCEPTION WHEN OTHERS THEN
   BEGIN
     INSERT INTO pgl_ddl_deploy.exceptions (set_name, pid, executed_at, ddl_sql, err_msg, err_state)
     VALUES (c_set_name, v_pid, current_timestamp, v_sql, SQLERRM, SQLSTATE);
-    RAISE WARNING 'Deployment exception logged in pgl_ddl_deploy.exceptions at %', current_timestamp;
+    RAISE WARNING '%', c_exception_msg;
   --No matter what, don't let this function block any DDL
   EXCEPTION WHEN OTHERS THEN
     RAISE WARNING 'Unhandled exception % %', SQLERRM, SQLSTATE;
@@ -460,8 +463,9 @@ BEGIN
               SET SEARCH_PATH TO $INNER_BLOCK$||c_search_path||$INNER_BLOCK$;
 
               --Execute DDL
+              EXECUTE $EXEC_SUBSCRIBER$
               $INNER_BLOCK$||c_exec_prefix||v_ddl||c_exec_suffix||$INNER_BLOCK$
-              ;
+              $EXEC_SUBSCRIBER$;
 
               --Log change on subscriber
               INSERT INTO pgl_ddl_deploy.subscriber_logs
@@ -546,7 +550,7 @@ BEGIN
                 than c_max_query_length, but it doesn't hurt.
                 */
                (v_ddl_length >= c_max_query_length));
-                RAISE WARNING 'Unhandled deployment logged in pgl_ddl_deploy.unhandled at %', current_timestamp;
+                RAISE WARNING '%', c_unhandled_msg;
         END IF;
 
       END IF;
@@ -565,7 +569,7 @@ BEGIN
      v_ddl,
      TG_TAG,
      TRUE);
-    RAISE WARNING 'Unhandled deployment logged in pgl_ddl_deploy.unhandled at %', current_timestamp;
+    RAISE WARNING '%', c_unhandled_msg;
 
   END IF;
 
@@ -577,7 +581,7 @@ EXCEPTION WHEN OTHERS THEN
   BEGIN
     INSERT INTO pgl_ddl_deploy.exceptions (set_name, pid, executed_at, ddl_sql, err_msg, err_state)
     VALUES (c_set_name, v_pid, current_timestamp, v_sql, SQLERRM, SQLSTATE);
-    RAISE WARNING 'Deployment exception logged in pgl_ddl_deploy.exceptions at %', current_timestamp;
+    RAISE WARNING '%', c_exception_msg;
   --No matter what, don't let this function block any DDL
   EXCEPTION WHEN OTHERS THEN
     RAISE WARNING 'Unhandled exception % %', SQLERRM, SQLSTATE;
