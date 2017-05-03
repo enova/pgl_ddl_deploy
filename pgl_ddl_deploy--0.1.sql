@@ -16,8 +16,10 @@ CREATE TABLE pgl_ddl_deploy.events (
     pid INT,
     executed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     ddl_sql TEXT,
-    backend_xmin BIGINT,
-    CONSTRAINT unique_pid_xmin_sql UNIQUE (set_name, pid, backend_xmin, ddl_sql));
+    backend_xmin BIGINT
+    );
+
+CREATE UNIQUE INDEX ON pgl_ddl_deploy.events (set_name, pid, backend_xmin, md5(ddl_sql));
 
 CREATE TABLE pgl_ddl_deploy.exceptions (
     id SERIAL PRIMARY KEY,
