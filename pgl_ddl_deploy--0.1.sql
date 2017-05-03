@@ -4,7 +4,7 @@
 CREATE TABLE pgl_ddl_deploy.set_config (
     set_name NAME PRIMARY KEY,
     include_schema_regex TEXT,
-    lock_safe_deployment BOOLEAN DEFAULT TRUE,
+    lock_safe_deployment BOOLEAN DEFAULT FALSE, -- This currently has issues with crashing the worker in a real lock scenario.  DDL will be deployed successfully after lock wait, then worker crashes with Linux error: epoll_ctl() failed: Invalid argument.  Then it will retry to apply the logical change even though it is already deployed, breaking replication.
     pass_mixed_ddl BOOLEAN DEFAULT FALSE
     );
 
@@ -34,6 +34,7 @@ CREATE TABLE pgl_ddl_deploy.unhandled (
     pid INT,
     executed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     ddl_sql TEXT,
+    command_tag TEXT,
     lock_count INT,
     too_long BOOLEAN,
     mixed BOOLEAN);
@@ -86,8 +87,10 @@ WITH vars AS
 
   'pgl_ddl_deploy.auto_replicate_ddl_'||set_name AS auto_replication_function_name,
   'pgl_ddl_deploy.auto_replicate_ddl_drop_'||set_name AS auto_replication_drop_function_name,
+  'pgl_ddl_deploy.auto_replicate_ddl_unsupported_'||set_name AS auto_replication_unsupported_function_name,
   'auto_replicate_ddl_'||set_name AS auto_replication_trigger_name,
   'auto_replicate_ddl_drop_'||set_name AS auto_replication_drop_trigger_name,
+  'auto_replicate_ddl_unsupported_'||set_name AS auto_replication_unsupported_trigger_name,
 
   /****
   These constants in DECLARE portion of all functions is identical and can be shared
@@ -135,8 +138,10 @@ INNER JOIN pgl_ddl_deploy.set_config sc USING (set_name))
 SELECT set_name,
   auto_replication_function_name,
   auto_replication_drop_function_name,
+  auto_replication_unsupported_function_name,
   auto_replication_trigger_name,
   auto_replication_drop_trigger_name,
+  auto_replication_unsupported_trigger_name,
 $BUILD$
 CREATE OR REPLACE FUNCTION $BUILD$||auto_replication_function_name||$BUILD$() RETURNS EVENT_TRIGGER
 AS
@@ -313,12 +318,14 @@ BEGIN
                pid,
                executed_at,
                ddl_sql,
+               command_tag,
                too_long)
               VALUES
               (c_set_name,
                v_pid,
                current_timestamp,
                v_ddl,
+               TG_TAG,
                /****
                 It shouldn't be possible for v_ddl_length to be greater
                 than c_max_query_length, but it doesn't hurt.
@@ -334,12 +341,14 @@ BEGIN
      pid,
      executed_at,
      ddl_sql,
+     command_tag,
      mixed)
     VALUES
     (c_set_name,
      v_pid,
      current_timestamp,
      v_ddl,
+     TG_TAG,
      TRUE);
     RAISE WARNING 'Unhandled deployment logged in pgl_ddl_deploy.unhandled at %', current_timestamp;
   END IF;
@@ -524,12 +533,14 @@ BEGIN
                pid,
                executed_at,
                ddl_sql,
+               command_tag,
                too_long)
               VALUES
               (c_set_name,
                v_pid,
                current_timestamp,
                v_ddl,
+               TG_TAG,
                /****
                 It shouldn't be possible for v_ddl_length to be greater
                 than c_max_query_length, but it doesn't hurt.
@@ -545,12 +556,14 @@ BEGIN
      pid,
      executed_at,
      ddl_sql,
+     command_tag,
      mixed)
     VALUES
     (c_set_name,
      v_pid,
      current_timestamp,
      v_ddl,
+     TG_TAG,
      TRUE);
     RAISE WARNING 'Unhandled deployment logged in pgl_ddl_deploy.unhandled at %', current_timestamp;
 
@@ -576,6 +589,66 @@ $BUILD$
   AS auto_replication_drop_function,
 
 $BUILD$
+CREATE OR REPLACE FUNCTION $BUILD$||auto_replication_unsupported_function_name||$BUILD$() RETURNS EVENT_TRIGGER
+AS
+$BODY$
+DECLARE
+  $BUILD$||declare_constants||$BUILD$
+BEGIN
+
+ /*****
+  Only enter execution body if table being altered is in a relevant schema
+   */
+  SELECT COUNT(1)
+    , SUM(CASE
+          WHEN schema_name ~* c_include_schema_regex
+            AND schema_name !~* c_exclude_always
+            OR (object_type = 'schema'
+              AND object_identity ~* c_include_schema_regex)
+            THEN 1
+          ELSE 0 END) AS relevant_schema_count
+    INTO v_cmd_count, v_match_count
+  FROM pg_event_trigger_ddl_commands()
+  WHERE
+    schema_name ~* c_include_schema_regex
+    AND schema_name !~* c_exclude_always
+    OR (object_type = 'schema'
+      AND object_identity ~* c_include_schema_regex);
+
+  IF v_match_count > 0
+    THEN
+
+    --Fresh snapshot for pg_stat_activity
+    PERFORM pg_stat_clear_snapshot();
+
+    SELECT query
+    INTO v_ddl
+    FROM pg_stat_activity WHERE pid = v_pid;
+
+    INSERT INTO pgl_ddl_deploy.unhandled
+    (set_name,
+     pid,
+     executed_at,
+     ddl_sql,
+     command_tag
+     )
+    VALUES
+    (c_set_name,
+     v_pid,
+     current_timestamp,
+     v_ddl,
+     TG_TAG
+     );
+    RAISE WARNING 'Unhandled deployment logged in pgl_ddl_deploy.unhandled at %', current_timestamp;
+  END IF;
+
+END;
+$BODY$
+LANGUAGE plpgsql;
+$BUILD$
+  AS auto_replication_unsupported_function,
+
+$BUILD$
 CREATE EVENT TRIGGER $BUILD$||auto_replication_trigger_name||$BUILD$ ON ddl_command_end
 WHEN TAG IN(
   'ALTER TABLE'
@@ -583,8 +656,6 @@ WHEN TAG IN(
   ,'ALTER SEQUENCE'
   ,'CREATE SCHEMA'
   ,'CREATE TABLE'
-  ,'CREATE TABLE AS'
-  ,'SELECT INTO'
   ,'CREATE FUNCTION'
   ,'ALTER FUNCTION'
   ,'CREATE TYPE'
@@ -605,26 +676,43 @@ WHEN TAG IN(
   ,'DROP VIEW')
 --TODO - CREATE INDEX HANDLING
 EXECUTE PROCEDURE $BUILD$||auto_replication_drop_function_name||$BUILD$();
-$BUILD$ AS auto_replication_drop_trigger
+$BUILD$ AS auto_replication_drop_trigger,
+
+$BUILD$
+CREATE EVENT TRIGGER $BUILD$||auto_replication_unsupported_trigger_name||$BUILD$ ON ddl_command_end 
+WHEN TAG IN(
+  'CREATE TABLE AS'
+  ,'SELECT INTO'
+  )
+--TODO - CREATE INDEX HANDLING
+EXECUTE PROCEDURE $BUILD$||auto_replication_unsupported_function_name||$BUILD$();
+$BUILD$ AS auto_replication_unsupported_trigger
 FROM vars)
 
 SELECT b.set_name,
   b.auto_replication_function_name,
   b.auto_replication_drop_function_name,
+  b.auto_replication_unsupported_function_name,
   b.auto_replication_trigger_name,
   b.auto_replication_drop_trigger_name,
+  b.auto_replication_unsupported_trigger_name,
   b.auto_replication_function,
   b.auto_replication_drop_function,
+  b.auto_replication_unsupported_function,
   b.auto_replication_trigger,
   b.auto_replication_drop_trigger,
+  b.auto_replication_unsupported_trigger,
   $BUILD$
-  DROP EVENT TRIGGER IF EXISTS $BUILD$||auto_replication_trigger_name||', '||auto_replication_drop_trigger_name||$BUILD$;
+  DROP EVENT TRIGGER IF EXISTS $BUILD$||auto_replication_trigger_name||', '||auto_replication_drop_trigger_name||', '||auto_replication_unsupported_trigger_name||$BUILD$;
   DROP FUNCTION IF EXISTS $BUILD$||auto_replication_function_name||$BUILD$();
   DROP FUNCTION IF EXISTS $BUILD$||auto_replication_drop_function_name||$BUILD$();
+  DROP FUNCTION IF EXISTS $BUILD$||auto_replication_unsupported_function_name||$BUILD$();
   $BUILD$||auto_replication_function||$BUILD$
   $BUILD$||auto_replication_drop_function||$BUILD$
+  $BUILD$||auto_replication_unsupported_function||$BUILD$
   $BUILD$||auto_replication_trigger||$BUILD$
   $BUILD$||auto_replication_drop_trigger||$BUILD$
+  $BUILD$||auto_replication_unsupported_trigger||$BUILD$
   $BUILD$ AS deploy_sql
 FROM build b;
 
