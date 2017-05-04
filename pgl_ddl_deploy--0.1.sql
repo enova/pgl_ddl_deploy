@@ -16,8 +16,10 @@ CREATE TABLE pgl_ddl_deploy.events (
     pid INT,
     executed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     ddl_sql TEXT,
-    backend_xmin BIGINT,
-    CONSTRAINT unique_pid_xmin_sql UNIQUE (set_name, pid, backend_xmin, ddl_sql));
+    backend_xmin BIGINT
+    );
+
+CREATE UNIQUE INDEX ON pgl_ddl_deploy.events (set_name, pid, backend_xmin, md5(ddl_sql));
 
 CREATE TABLE pgl_ddl_deploy.exceptions (
     id SERIAL PRIMARY KEY,
@@ -296,15 +298,17 @@ BEGIN
             **/
             PERFORM pglogical.replication_set_add_table(
               set_name:=c_set_name
-              ,relation:=c.relid
+              ,relation:=c.oid
               ,synchronize_data:=false
             )
-            FROM pg_stat_user_tables c
-            WHERE c.schemaname ~* c_include_schema_regex
-              AND c.schemaname !~* c_exclude_always
+            FROM pg_namespace n
+            INNER JOIN pg_class c ON n.oid = c.relnamespace
+              AND c.relpersistence = 'p'
+            WHERE n.nspname ~* c_include_schema_regex
+              AND n.nspname !~* c_exclude_always
               AND EXISTS (SELECT 1
               FROM pg_index i
-              WHERE i.indrelid = c.relid
+              WHERE i.indrelid = c.oid
                 AND i.indisprimary)
               AND NOT EXISTS
               (SELECT 1
@@ -312,7 +316,7 @@ BEGIN
               INNER JOIN pglogical.replication_set r
                 ON r.set_id = rsr.set_id
               WHERE r.set_name = c_set_name
-                AND rsr.set_reloid = c.relid);
+                AND rsr.set_reloid = c.oid);
 
           ELSE
 
