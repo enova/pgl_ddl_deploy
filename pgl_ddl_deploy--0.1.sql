@@ -106,6 +106,12 @@ WITH vars AS
   v_pid INT = pg_backend_pid();
   v_rec RECORD;
   v_ddl TEXT;
+
+  /*****
+  We need to strip the DDL of:
+    1. Transaction begin and commit, which cannot run inside plpgsql
+  *****/
+  v_ddl_strip_regex TEXT = '(begin\W*transaction\W*|begin\W*work\W*|begin\W*|commit\W*transaction\W*|commit\W*work\W*|commit\W*);'
   v_backend_xmin BIGINT;
   v_already_executed BOOLEAN;
   v_ddl_length INT;
@@ -183,6 +189,8 @@ BEGIN
         SELECT query, backend_xmin
         INTO v_ddl, v_backend_xmin
         FROM pg_stat_activity WHERE pid = v_pid;
+        
+        v_ddl:=regexp_replace(v_ddl, v_ddl_strip_regex, '', 'ig'); 
 
         /****
         A multi-statement SQL command may fire this event trigger more than once
@@ -425,6 +433,8 @@ BEGIN
         SELECT query, backend_xmin
         INTO v_ddl, v_backend_xmin
         FROM pg_stat_activity WHERE pid = v_pid;
+
+        v_ddl:=regexp_replace(v_ddl, v_ddl_strip_regex, '', 'ig');
 
         /****
         A multi-statement SQL command may fire this event trigger more than once
