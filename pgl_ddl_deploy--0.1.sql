@@ -126,7 +126,7 @@ WITH vars AS
     --Constants based on configuration
   c_exec_prefix TEXT =(CASE
                           WHEN c_lock_safe_deployment
-                          THEN 'PERFORM pgl_ddl_deploy.lock_safe_executor($PGL_DDL_DEPLOY$'
+                          THEN 'SELECT pgl_ddl_deploy.lock_safe_executor($PGL_DDL_DEPLOY$'
                           ELSE ''
                         END);
   c_exec_suffix TEXT = (CASE
