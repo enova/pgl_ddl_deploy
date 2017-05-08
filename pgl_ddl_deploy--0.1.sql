@@ -200,7 +200,8 @@ BEGIN
         SELECT query, backend_xmin
         INTO v_ddl, v_backend_xmin
         FROM pgl_ddl_deploy.stat_activity();
-        
+    
+        v_ddl_length:=LENGTH(v_ddl);    --Must be done before stripped to determine if length limit is reached      
         v_ddl:=regexp_replace(v_ddl, v_ddl_strip_regex, '', 'ig'); 
 
         /****
@@ -215,8 +216,6 @@ BEGIN
                                 AND pid = v_pid));
 
         IF NOT v_already_executed THEN
-          v_ddl_length:=LENGTH(v_ddl);
-
           --Get provider name, in order only to run command on a subscriber to this provider
           c_provider_name:=(SELECT n.node_name FROM pglogical.node n INNER JOIN pglogical.local_node ln USING (node_id));
 
@@ -445,6 +444,7 @@ BEGIN
         INTO v_ddl, v_backend_xmin
         FROM pgl_ddl_deploy.stat_activity();
 
+        v_ddl_length:=LENGTH(v_ddl);    --Must be done before stripped to determine if length limit is reached
         v_ddl:=regexp_replace(v_ddl, v_ddl_strip_regex, '', 'ig');
 
         /****
@@ -459,8 +459,6 @@ BEGIN
                                 AND pid = v_pid));
 
         IF NOT v_already_executed THEN
-          v_ddl_length:=LENGTH(v_ddl);
-
           --Get provider name, in order only to run command on a subscriber to this provider
           c_provider_name:=(SELECT n.node_name FROM pglogical.node n INNER JOIN pglogical.local_node ln USING (node_id));
 
