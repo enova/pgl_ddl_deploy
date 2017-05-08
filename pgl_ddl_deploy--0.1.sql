@@ -111,7 +111,7 @@ WITH vars AS
   We need to strip the DDL of:
     1. Transaction begin and commit, which cannot run inside plpgsql
   *****/
-  v_ddl_strip_regex TEXT = '(begin\W*transaction\W*|begin\W*work\W*|begin\W*|commit\W*transaction\W*|commit\W*work\W*|commit\W*);'
+  v_ddl_strip_regex TEXT = '(begin\W*transaction\W*|begin\W*work\W*|begin\W*|commit\W*transaction\W*|commit\W*work\W*|commit\W*);';
   v_backend_xmin BIGINT;
   v_already_executed BOOLEAN;
   v_ddl_length INT;
