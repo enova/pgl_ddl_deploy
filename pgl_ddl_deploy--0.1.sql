@@ -63,6 +63,17 @@ CREATE TABLE pgl_ddl_deploy.commands (
     object_identity text,
     in_extension bool);
 
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.stat_activity()
+RETURNS TABLE (query TEXT, backend_xmin XID)
+AS
+$BODY$
+SELECT query, backend_xmin
+FROM pg_stat_activity
+WHERE pid = pg_backend_pid();
+$BODY$
+SECURITY DEFINER
+LANGUAGE SQL STABLE;
+
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.lock_safe_executor(p_sql TEXT)
 RETURNS VOID AS $BODY$
 BEGIN
@@ -188,7 +199,7 @@ BEGIN
 
         SELECT query, backend_xmin
         INTO v_ddl, v_backend_xmin
-        FROM pg_stat_activity WHERE pid = v_pid;
+        FROM pgl_ddl_deploy.stat_activity();
         
         v_ddl:=regexp_replace(v_ddl, v_ddl_strip_regex, '', 'ig'); 
 
@@ -432,7 +443,7 @@ BEGIN
 
         SELECT query, backend_xmin
         INTO v_ddl, v_backend_xmin
-        FROM pg_stat_activity WHERE pid = v_pid;
+        FROM pgl_ddl_deploy.stat_activity();
 
         v_ddl:=regexp_replace(v_ddl, v_ddl_strip_regex, '', 'ig');
 
@@ -641,7 +652,7 @@ BEGIN
 
     SELECT query
     INTO v_ddl
-    FROM pg_stat_activity WHERE pid = v_pid;
+    FROM pgl_ddl_deploy.stat_activity();
 
     INSERT INTO pgl_ddl_deploy.unhandled
     (set_name,
