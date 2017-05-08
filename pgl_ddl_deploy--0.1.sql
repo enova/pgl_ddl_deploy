@@ -63,6 +63,17 @@ CREATE TABLE pgl_ddl_deploy.commands (
     object_identity text,
     in_extension bool);
 
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.stat_activity()
+RETURNS TABLE (query TEXT, backend_xmin XID)
+AS
+$BODY$
+SELECT query, backend_xmin
+FROM pg_stat_activity
+WHERE pid = pg_backend_pid();
+$BODY$
+SECURITY DEFINER
+LANGUAGE SQL STABLE;
+
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.lock_safe_executor(p_sql TEXT)
 RETURNS VOID AS $BODY$
 BEGIN
@@ -188,7 +199,7 @@ BEGIN
 
         SELECT query, backend_xmin
         INTO v_ddl, v_backend_xmin
-        FROM pg_stat_activity WHERE pid = v_pid;
+        FROM pgl_ddl_deploy.stat_activity();
         
         v_ddl:=regexp_replace(v_ddl, v_ddl_strip_regex, '', 'ig'); 
 
@@ -432,7 +443,7 @@ BEGIN
 
         SELECT query, backend_xmin
         INTO v_ddl, v_backend_xmin
-        FROM pg_stat_activity WHERE pid = v_pid;
+        FROM pgl_ddl_deploy.stat_activity();
 
         v_ddl:=regexp_replace(v_ddl, v_ddl_strip_regex, '', 'ig');
 
@@ -641,7 +652,7 @@ BEGIN
 
     SELECT query
     INTO v_ddl
-    FROM pg_stat_activity WHERE pid = v_pid;
+    FROM pgl_ddl_deploy.stat_activity();
 
     INSERT INTO pgl_ddl_deploy.unhandled
     (set_name,
@@ -747,6 +758,37 @@ BEGIN
     EXECUTE v_sql;
     RETURN TRUE;
   END IF;
+END;
+$BODY$
+LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.add_role(p_roleoid oid)
+RETURNS BOOLEAN AS $BODY$
+/******
+Assuming roles doing DDL are not superusers, this function grants needed privileges
+to run through the pgl_ddl_deploy DDL deployment.
+This needs to be run on BOTH provider and subscriber.
+******/
+DECLARE
+    v_rec RECORD;
+    v_sql TEXT;
+BEGIN
+
+    FOR v_rec IN
+        SELECT quote_ident(rolname) AS rolname FROM pg_roles WHERE oid = p_roleoid
+    LOOP
+
+    v_sql:='
+    GRANT USAGE ON SCHEMA pglogical TO '||v_rec.rolname||';
+    GRANT USAGE ON SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
+    GRANT INSERT, UPDATE, SELECT ON ALL TABLES IN SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
+    GRANT USAGE ON ALL SEQUENCES IN SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
+    GRANT SELECT ON ALL TABLES IN SCHEMA pglogical TO '||v_rec.rolname||';';
+
+    EXECUTE v_sql;
+    RETURN true; 
+    END LOOP;
+RETURN false;
 END;
 $BODY$
 LANGUAGE plpgsql;
