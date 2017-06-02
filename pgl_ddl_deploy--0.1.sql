@@ -1,6 +1,11 @@
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
 \echo Use "CREATE EXTENSION pgl_ddl_deploy" to load this file. \quit
 
+CREATE FUNCTION pgl_ddl_deploy.sql_command_tags(p_sql TEXT)
+RETURNS TEXT[] AS
+'MODULE_PATHNAME', 'sql_command_tags'
+LANGUAGE C VOLATILE STRICT;
+
 CREATE TABLE pgl_ddl_deploy.set_config (
     set_name NAME PRIMARY KEY,
     include_schema_regex TEXT,
