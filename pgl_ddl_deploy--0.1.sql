@@ -740,20 +740,66 @@ SELECT b.set_name,
   $BUILD$||auto_replication_trigger||$BUILD$
   $BUILD$||auto_replication_drop_trigger||$BUILD$
   $BUILD$||auto_replication_unsupported_trigger||$BUILD$
-  $BUILD$ AS deploy_sql
+  $BUILD$ AS deploy_sql,
+  $BUILD$
+  ALTER EVENT TRIGGER $BUILD$||auto_replication_trigger_name||$BUILD$ DISABLE;
+  ALTER EVENT TRIGGER $BUILD$||auto_replication_drop_trigger_name||$BUILD$ DISABLE;
+  ALTER EVENT TRIGGER $BUILD$||auto_replication_unsupported_trigger_name||$BUILD$ DISABLE;
+  $BUILD$ AS disable_sql,
+  $BUILD$
+  ALTER EVENT TRIGGER $BUILD$||auto_replication_trigger_name||$BUILD$ ENABLE;
+  ALTER EVENT TRIGGER $BUILD$||auto_replication_drop_trigger_name||$BUILD$ ENABLE;
+  ALTER EVENT TRIGGER $BUILD$||auto_replication_unsupported_trigger_name||$BUILD$ ENABLE;
+  $BUILD$ AS enable_sql
 FROM build b;
 
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.deploy(p_set_name text) RETURNS BOOLEAN AS
 $BODY$
 DECLARE
-  v_sql TEXT = (SELECT deploy_sql
-                FROM pgl_ddl_deploy.event_trigger_schema
-                WHERE set_name = p_set_name);
+  v_result BOOLEAN;
 BEGIN
-  IF v_sql IS NULL THEN
+  SELECT pgl_ddl_deploy.schema_execute(p_set_name, 'deploy_sql') INTO v_result;
+  RETURN v_result;
+END;
+$BODY$
+LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.enable(p_set_name text) RETURNS BOOLEAN AS
+$BODY$
+DECLARE
+  v_result BOOLEAN;
+BEGIN
+  SELECT pgl_ddl_deploy.schema_execute(p_set_name, 'enable_sql') INTO v_result;
+  RETURN v_result;
+END;
+$BODY$
+LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.disable(p_set_name text) RETURNS BOOLEAN AS
+$BODY$
+DECLARE
+  v_result BOOLEAN;
+BEGIN
+  SELECT pgl_ddl_deploy.schema_execute(p_set_name, 'disable_sql') INTO v_result;
+  RETURN v_result;
+END;
+$BODY$
+LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.schema_execute(p_set_name text, p_field_name text) RETURNS BOOLEAN AS
+$BODY$
+DECLARE
+  v_in_sql TEXT;
+  v_out_sql TEXT;
+BEGIN
+  v_in_sql = $$(SELECT $$||p_field_name||$$
+                FROM pgl_ddl_deploy.event_trigger_schema
+                WHERE set_name = '$$||p_set_name||$$');$$;
+  EXECUTE v_in_sql INTO v_out_sql;
+  IF v_out_sql IS NULL THEN
     RETURN FALSE;
   ELSE
-    EXECUTE v_sql;
+    EXECUTE v_out_sql;
     RETURN TRUE;
   END IF;
 END;
