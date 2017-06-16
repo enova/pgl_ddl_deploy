@@ -524,12 +524,7 @@ BEGIN
             THEN 1
           ELSE 0 END) AS excluded_schema_count
     INTO v_cmd_count, v_match_count, v_excluded_count
-  FROM pg_event_trigger_dropped_objects()
-  WHERE
-    schema_name ~* c_include_schema_regex
-    AND schema_name !~* c_exclude_always
-    OR (object_type = 'schema'
-      AND object_identity ~* c_include_schema_regex);
+  FROM pg_event_trigger_dropped_objects();
 
   IF (v_match_count > 0 AND v_excluded_count = 0)
 
