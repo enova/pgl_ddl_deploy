@@ -29,8 +29,8 @@ SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY i
  test3    | CREATE SCHEMA foobar; | CREATE SCHEMA foobar;
  test2    | CREATE SCHEMA foobar; | CREATE SCHEMA foobar;
  test1    | CREATE SCHEMA foobar; | CREATE SCHEMA foobar;
- test4    | DROP VIEW fooview;    | DROP VIEW fooview;
- test3    | DROP VIEW fooview;    | DROP VIEW fooview;
+ test4    | DROP SEQUENCE foo;    | DROP SEQUENCE foo;
+ test3    | DROP SEQUENCE foo;    | DROP SEQUENCE foo;
 (10 rows)
 
 SELECT set_name, ddl_sql_raw, command_tag, reason FROM pgl_ddl_deploy.unhandled ORDER BY id DESC LIMIT 10;

@@ -653,7 +653,8 @@ WHEN TAG IN(
   ,'DROP TABLE'
   ,'DROP FUNCTION'
   ,'DROP TYPE'
-  ,'DROP VIEW')
+  ,'DROP VIEW'
+  ,'DROP SEQUENCE')
 --TODO - CREATE INDEX HANDLING
 EXECUTE PROCEDURE $BUILD$||auto_replication_drop_function_name||$BUILD$();
 $BUILD$::TEXT AS auto_replication_drop_trigger,
