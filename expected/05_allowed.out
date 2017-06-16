@@ -2,31 +2,136 @@ SET ROLE test_pgl_ddl_deploy;
 SET client_min_messages TO warning;
 CREATE TABLE foo(id serial primary key);
 SELECT * FROM check_rep_tables;
+ set_name | table_name 
+----------+------------
+ test1    | foo
+ test2    | foo
+ test3    | foo
+ test4    | foo
+(4 rows)
+
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |               ddl_sql_raw                |               ddl_sql_sent               
+----------+------------------------------------------+------------------------------------------
+ test4    | CREATE TABLE foo(id serial primary key); | CREATE TABLE foo(id serial primary key);
+ test3    | CREATE TABLE foo(id serial primary key); | CREATE TABLE foo(id serial primary key);
+ test2    | CREATE TABLE foo(id serial primary key); | CREATE TABLE foo(id serial primary key);
+ test1    | CREATE TABLE foo(id serial primary key); | CREATE TABLE foo(id serial primary key);
+(4 rows)
 
 ALTER TABLE foo ADD COLUMN bla TEXT;
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |               ddl_sql_raw                |               ddl_sql_sent               
+----------+------------------------------------------+------------------------------------------
+ test4    | ALTER TABLE foo ADD COLUMN bla TEXT;     | ALTER TABLE foo ADD COLUMN bla TEXT;
+ test3    | ALTER TABLE foo ADD COLUMN bla TEXT;     | ALTER TABLE foo ADD COLUMN bla TEXT;
+ test2    | ALTER TABLE foo ADD COLUMN bla TEXT;     | ALTER TABLE foo ADD COLUMN bla TEXT;
+ test1    | ALTER TABLE foo ADD COLUMN bla TEXT;     | ALTER TABLE foo ADD COLUMN bla TEXT;
+ test4    | CREATE TABLE foo(id serial primary key); | CREATE TABLE foo(id serial primary key);
+ test3    | CREATE TABLE foo(id serial primary key); | CREATE TABLE foo(id serial primary key);
+ test2    | CREATE TABLE foo(id serial primary key); | CREATE TABLE foo(id serial primary key);
+ test1    | CREATE TABLE foo(id serial primary key); | CREATE TABLE foo(id serial primary key);
+(8 rows)
 
 INSERT INTO foo (bla) VALUES (1),(2),(3);
-
 DROP TABLE foo CASCADE;
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |               ddl_sql_raw                |               ddl_sql_sent               
+----------+------------------------------------------+------------------------------------------
+ test4    | DROP TABLE foo CASCADE;                  | DROP TABLE foo CASCADE;
+ test3    | DROP TABLE foo CASCADE;                  | DROP TABLE foo CASCADE;
+ test2    | DROP TABLE foo CASCADE;                  | DROP TABLE foo CASCADE;
+ test1    | DROP TABLE foo CASCADE;                  | DROP TABLE foo CASCADE;
+ test4    | ALTER TABLE foo ADD COLUMN bla TEXT;     | ALTER TABLE foo ADD COLUMN bla TEXT;
+ test3    | ALTER TABLE foo ADD COLUMN bla TEXT;     | ALTER TABLE foo ADD COLUMN bla TEXT;
+ test2    | ALTER TABLE foo ADD COLUMN bla TEXT;     | ALTER TABLE foo ADD COLUMN bla TEXT;
+ test1    | ALTER TABLE foo ADD COLUMN bla TEXT;     | ALTER TABLE foo ADD COLUMN bla TEXT;
+ test4    | CREATE TABLE foo(id serial primary key); | CREATE TABLE foo(id serial primary key);
+ test3    | CREATE TABLE foo(id serial primary key); | CREATE TABLE foo(id serial primary key);
+(10 rows)
 
 CREATE SCHEMA foobar;
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |       ddl_sql_raw       |      ddl_sql_sent       
+----------+-------------------------+-------------------------
+ test8    | CREATE SCHEMA foobar;   | CREATE SCHEMA foobar;
+ test7    | CREATE SCHEMA foobar;   | CREATE SCHEMA foobar;
+ test6    | CREATE SCHEMA foobar;   | CREATE SCHEMA foobar;
+ test5    | CREATE SCHEMA foobar;   | CREATE SCHEMA foobar;
+ test4    | CREATE SCHEMA foobar;   | CREATE SCHEMA foobar;
+ test3    | CREATE SCHEMA foobar;   | CREATE SCHEMA foobar;
+ test2    | CREATE SCHEMA foobar;   | CREATE SCHEMA foobar;
+ test1    | CREATE SCHEMA foobar;   | CREATE SCHEMA foobar;
+ test4    | DROP TABLE foo CASCADE; | DROP TABLE foo CASCADE;
+ test3    | DROP TABLE foo CASCADE; | DROP TABLE foo CASCADE;
+(10 rows)
 
 CREATE TABLE foobar.foo(id serial primary key);
 SELECT * FROM check_rep_tables;
+ set_name | table_name 
+----------+------------
+ test1    | foobar.foo
+ test2    | foobar.foo
+ test3    | foobar.foo
+ test4    | foobar.foo
+ test5    | foobar.foo
+ test6    | foobar.foo
+ test7    | foobar.foo
+ test8    | foobar.foo
+(8 rows)
+
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |                   ddl_sql_raw                   |                  ddl_sql_sent                   
+----------+-------------------------------------------------+-------------------------------------------------
+ test8    | CREATE TABLE foobar.foo(id serial primary key); | CREATE TABLE foobar.foo(id serial primary key);
+ test7    | CREATE TABLE foobar.foo(id serial primary key); | CREATE TABLE foobar.foo(id serial primary key);
+ test6    | CREATE TABLE foobar.foo(id serial primary key); | CREATE TABLE foobar.foo(id serial primary key);
+ test5    | CREATE TABLE foobar.foo(id serial primary key); | CREATE TABLE foobar.foo(id serial primary key);
+ test4    | CREATE TABLE foobar.foo(id serial primary key); | CREATE TABLE foobar.foo(id serial primary key);
+ test3    | CREATE TABLE foobar.foo(id serial primary key); | CREATE TABLE foobar.foo(id serial primary key);
+ test2    | CREATE TABLE foobar.foo(id serial primary key); | CREATE TABLE foobar.foo(id serial primary key);
+ test1    | CREATE TABLE foobar.foo(id serial primary key); | CREATE TABLE foobar.foo(id serial primary key);
+ test8    | CREATE SCHEMA foobar;                           | CREATE SCHEMA foobar;
+ test7    | CREATE SCHEMA foobar;                           | CREATE SCHEMA foobar;
+(10 rows)
 
 ALTER TABLE foobar.foo ADD COLUMN bla TEXT;
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |                   ddl_sql_raw                   |                  ddl_sql_sent                   
+----------+-------------------------------------------------+-------------------------------------------------
+ test8    | ALTER TABLE foobar.foo ADD COLUMN bla TEXT;     | ALTER TABLE foobar.foo ADD COLUMN bla TEXT;
+ test7    | ALTER TABLE foobar.foo ADD COLUMN bla TEXT;     | ALTER TABLE foobar.foo ADD COLUMN bla TEXT;
+ test6    | ALTER TABLE foobar.foo ADD COLUMN bla TEXT;     | ALTER TABLE foobar.foo ADD COLUMN bla TEXT;
+ test5    | ALTER TABLE foobar.foo ADD COLUMN bla TEXT;     | ALTER TABLE foobar.foo ADD COLUMN bla TEXT;
+ test4    | ALTER TABLE foobar.foo ADD COLUMN bla TEXT;     | ALTER TABLE foobar.foo ADD COLUMN bla TEXT;
+ test3    | ALTER TABLE foobar.foo ADD COLUMN bla TEXT;     | ALTER TABLE foobar.foo ADD COLUMN bla TEXT;
+ test2    | ALTER TABLE foobar.foo ADD COLUMN bla TEXT;     | ALTER TABLE foobar.foo ADD COLUMN bla TEXT;
+ test1    | ALTER TABLE foobar.foo ADD COLUMN bla TEXT;     | ALTER TABLE foobar.foo ADD COLUMN bla TEXT;
+ test8    | CREATE TABLE foobar.foo(id serial primary key); | CREATE TABLE foobar.foo(id serial primary key);
+ test7    | CREATE TABLE foobar.foo(id serial primary key); | CREATE TABLE foobar.foo(id serial primary key);
+(10 rows)
 
 INSERT INTO foobar.foo (bla) VALUES (1),(2),(3);
-
 DROP SCHEMA foobar CASCADE;
 SELECT * FROM check_rep_tables;
+ set_name | table_name 
+----------+------------
+(0 rows)
+
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |                 ddl_sql_raw                 |                ddl_sql_sent                 
+----------+---------------------------------------------+---------------------------------------------
+ test8    | DROP SCHEMA foobar CASCADE;                 | DROP SCHEMA foobar CASCADE;
+ test7    | DROP SCHEMA foobar CASCADE;                 | DROP SCHEMA foobar CASCADE;
+ test6    | DROP SCHEMA foobar CASCADE;                 | DROP SCHEMA foobar CASCADE;
+ test5    | DROP SCHEMA foobar CASCADE;                 | DROP SCHEMA foobar CASCADE;
+ test4    | DROP SCHEMA foobar CASCADE;                 | DROP SCHEMA foobar CASCADE;
+ test3    | DROP SCHEMA foobar CASCADE;                 | DROP SCHEMA foobar CASCADE;
+ test2    | DROP SCHEMA foobar CASCADE;                 | DROP SCHEMA foobar CASCADE;
+ test1    | DROP SCHEMA foobar CASCADE;                 | DROP SCHEMA foobar CASCADE;
+ test8    | ALTER TABLE foobar.foo ADD COLUMN bla TEXT; | ALTER TABLE foobar.foo ADD COLUMN bla TEXT;
+ test7    | ALTER TABLE foobar.foo ADD COLUMN bla TEXT; | ALTER TABLE foobar.foo ADD COLUMN bla TEXT;
+(10 rows)
 
 CREATE FUNCTION foo() RETURNS INT AS
 $BODY$
@@ -34,16 +139,124 @@ SELECT 1;
 $BODY$
 LANGUAGE SQL STABLE;
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |             ddl_sql_raw              |             ddl_sql_sent             
+----------+--------------------------------------+--------------------------------------
+ test4    | CREATE FUNCTION foo() RETURNS INT AS+| CREATE FUNCTION foo() RETURNS INT AS+
+          | $BODY$                              +| $BODY$                              +
+          | SELECT 1;                           +| SELECT 1;                           +
+          | $BODY$                              +| $BODY$                              +
+          | LANGUAGE SQL STABLE;                 | LANGUAGE SQL STABLE;
+ test3    | CREATE FUNCTION foo() RETURNS INT AS+| CREATE FUNCTION foo() RETURNS INT AS+
+          | $BODY$                              +| $BODY$                              +
+          | SELECT 1;                           +| SELECT 1;                           +
+          | $BODY$                              +| $BODY$                              +
+          | LANGUAGE SQL STABLE;                 | LANGUAGE SQL STABLE;
+ test2    | CREATE FUNCTION foo() RETURNS INT AS+| CREATE FUNCTION foo() RETURNS INT AS+
+          | $BODY$                              +| $BODY$                              +
+          | SELECT 1;                           +| SELECT 1;                           +
+          | $BODY$                              +| $BODY$                              +
+          | LANGUAGE SQL STABLE;                 | LANGUAGE SQL STABLE;
+ test1    | CREATE FUNCTION foo() RETURNS INT AS+| CREATE FUNCTION foo() RETURNS INT AS+
+          | $BODY$                              +| $BODY$                              +
+          | SELECT 1;                           +| SELECT 1;                           +
+          | $BODY$                              +| $BODY$                              +
+          | LANGUAGE SQL STABLE;                 | LANGUAGE SQL STABLE;
+ test8    | DROP SCHEMA foobar CASCADE;          | DROP SCHEMA foobar CASCADE;
+ test7    | DROP SCHEMA foobar CASCADE;          | DROP SCHEMA foobar CASCADE;
+ test6    | DROP SCHEMA foobar CASCADE;          | DROP SCHEMA foobar CASCADE;
+ test5    | DROP SCHEMA foobar CASCADE;          | DROP SCHEMA foobar CASCADE;
+ test4    | DROP SCHEMA foobar CASCADE;          | DROP SCHEMA foobar CASCADE;
+ test3    | DROP SCHEMA foobar CASCADE;          | DROP SCHEMA foobar CASCADE;
+(10 rows)
 
 DROP FUNCTION foo();
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |             ddl_sql_raw              |             ddl_sql_sent             
+----------+--------------------------------------+--------------------------------------
+ test4    | DROP FUNCTION foo();                 | DROP FUNCTION foo();
+ test3    | DROP FUNCTION foo();                 | DROP FUNCTION foo();
+ test2    | DROP FUNCTION foo();                 | DROP FUNCTION foo();
+ test1    | DROP FUNCTION foo();                 | DROP FUNCTION foo();
+ test4    | CREATE FUNCTION foo() RETURNS INT AS+| CREATE FUNCTION foo() RETURNS INT AS+
+          | $BODY$                              +| $BODY$                              +
+          | SELECT 1;                           +| SELECT 1;                           +
+          | $BODY$                              +| $BODY$                              +
+          | LANGUAGE SQL STABLE;                 | LANGUAGE SQL STABLE;
+ test3    | CREATE FUNCTION foo() RETURNS INT AS+| CREATE FUNCTION foo() RETURNS INT AS+
+          | $BODY$                              +| $BODY$                              +
+          | SELECT 1;                           +| SELECT 1;                           +
+          | $BODY$                              +| $BODY$                              +
+          | LANGUAGE SQL STABLE;                 | LANGUAGE SQL STABLE;
+ test2    | CREATE FUNCTION foo() RETURNS INT AS+| CREATE FUNCTION foo() RETURNS INT AS+
+          | $BODY$                              +| $BODY$                              +
+          | SELECT 1;                           +| SELECT 1;                           +
+          | $BODY$                              +| $BODY$                              +
+          | LANGUAGE SQL STABLE;                 | LANGUAGE SQL STABLE;
+ test1    | CREATE FUNCTION foo() RETURNS INT AS+| CREATE FUNCTION foo() RETURNS INT AS+
+          | $BODY$                              +| $BODY$                              +
+          | SELECT 1;                           +| SELECT 1;                           +
+          | $BODY$                              +| $BODY$                              +
+          | LANGUAGE SQL STABLE;                 | LANGUAGE SQL STABLE;
+ test8    | DROP SCHEMA foobar CASCADE;          | DROP SCHEMA foobar CASCADE;
+ test7    | DROP SCHEMA foobar CASCADE;          | DROP SCHEMA foobar CASCADE;
+(10 rows)
 
 CREATE VIEW fooview AS
 SELECT 1 AS myfield;
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |             ddl_sql_raw              |             ddl_sql_sent             
+----------+--------------------------------------+--------------------------------------
+ test4    | CREATE VIEW fooview AS              +| CREATE VIEW fooview AS              +
+          | SELECT 1 AS myfield;                 | SELECT 1 AS myfield;
+ test3    | CREATE VIEW fooview AS              +| CREATE VIEW fooview AS              +
+          | SELECT 1 AS myfield;                 | SELECT 1 AS myfield;
+ test2    | CREATE VIEW fooview AS              +| CREATE VIEW fooview AS              +
+          | SELECT 1 AS myfield;                 | SELECT 1 AS myfield;
+ test1    | CREATE VIEW fooview AS              +| CREATE VIEW fooview AS              +
+          | SELECT 1 AS myfield;                 | SELECT 1 AS myfield;
+ test4    | DROP FUNCTION foo();                 | DROP FUNCTION foo();
+ test3    | DROP FUNCTION foo();                 | DROP FUNCTION foo();
+ test2    | DROP FUNCTION foo();                 | DROP FUNCTION foo();
+ test1    | DROP FUNCTION foo();                 | DROP FUNCTION foo();
+ test4    | CREATE FUNCTION foo() RETURNS INT AS+| CREATE FUNCTION foo() RETURNS INT AS+
+          | $BODY$                              +| $BODY$                              +
+          | SELECT 1;                           +| SELECT 1;                           +
+          | $BODY$                              +| $BODY$                              +
+          | LANGUAGE SQL STABLE;                 | LANGUAGE SQL STABLE;
+ test3    | CREATE FUNCTION foo() RETURNS INT AS+| CREATE FUNCTION foo() RETURNS INT AS+
+          | $BODY$                              +| $BODY$                              +
+          | SELECT 1;                           +| SELECT 1;                           +
+          | $BODY$                              +| $BODY$                              +
+          | LANGUAGE SQL STABLE;                 | LANGUAGE SQL STABLE;
+(10 rows)
 
 DROP VIEW fooview;
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |      ddl_sql_raw       |      ddl_sql_sent      
+----------+------------------------+------------------------
+ test4    | DROP VIEW fooview;     | DROP VIEW fooview;
+ test3    | DROP VIEW fooview;     | DROP VIEW fooview;
+ test2    | DROP VIEW fooview;     | DROP VIEW fooview;
+ test1    | DROP VIEW fooview;     | DROP VIEW fooview;
+ test4    | CREATE VIEW fooview AS+| CREATE VIEW fooview AS+
+          | SELECT 1 AS myfield;   | SELECT 1 AS myfield;
+ test3    | CREATE VIEW fooview AS+| CREATE VIEW fooview AS+
+          | SELECT 1 AS myfield;   | SELECT 1 AS myfield;
+ test2    | CREATE VIEW fooview AS+| CREATE VIEW fooview AS+
+          | SELECT 1 AS myfield;   | SELECT 1 AS myfield;
+ test1    | CREATE VIEW fooview AS+| CREATE VIEW fooview AS+
+          | SELECT 1 AS myfield;   | SELECT 1 AS myfield;
+ test4    | DROP FUNCTION foo();   | DROP FUNCTION foo();
+ test3    | DROP FUNCTION foo();   | DROP FUNCTION foo();
+(10 rows)
 
 SELECT * FROM pgl_ddl_deploy.unhandled;
+ id | set_name | pid | executed_at | ddl_sql_raw | command_tag | reason | backend_xmin 
+----+----------+-----+-------------+-------------+-------------+--------+--------------
+(0 rows)
+
 SELECT * FROM pgl_ddl_deploy.exceptions;
+ id | set_name | pid | executed_at | ddl_sql | err_msg | err_state 
+----+----------+-----+-------------+---------+---------+-----------
+(0 rows)
+

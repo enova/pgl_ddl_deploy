@@ -6,27 +6,99 @@ SET ROLE test_pgl_ddl_deploy;
 CREATE TABLE foo(id serial primary key);
 RESET ROLE;
 SELECT pgl_ddl_deploy.deploy('test1');
+WARNING:  
+  Deployment of auto-replication for set test1 failed
+  because 1 tables are already queued to be added to replication
+  based on your configuration.  These tables need to be added to
+  replication manually and synced, otherwise change your configuration.
+  Debug query: 
+    SELECT n.nspname, c.relname 
+    FROM pg_namespace n
+      INNER JOIN pg_class c ON n.oid = c.relnamespace
+        AND c.relpersistence = 'p'
+      WHERE n.nspname ~* '.*'
+        AND n.nspname !~* '^(pg_catalog|information_schema|pg_temp|pg_toast|pgl_ddl_deploy|pglogical).*'
+        AND EXISTS (SELECT 1
+        FROM pg_index i
+        WHERE i.indrelid = c.oid
+          AND i.indisprimary)
+        AND NOT EXISTS
+        (SELECT 1
+        FROM pglogical.replication_set_relation rsr
+        INNER JOIN pglogical.replication_set r
+          ON r.set_id = rsr.set_id
+        WHERE r.set_name = 'test1'
+          AND rsr.set_reloid = c.oid);
+    
+CONTEXT:  SQL statement "SELECT pgl_ddl_deploy.deployment_check(p_set_name)"
+PL/pgSQL function pgl_ddl_deploy.deploy(text) line 6 at SQL statement
+ deploy 
+--------
+ f
+(1 row)
+
 SET ROLE test_pgl_ddl_deploy;
 DROP TABLE foo;
 RESET ROLE;
-
 --This should work now
 SELECT pgl_ddl_deploy.deploy('test1');
+ deploy 
+--------
+ t
+(1 row)
 
 --This should work
 SELECT pgl_ddl_deploy.disable('test1');
+ disable 
+---------
+ t
+(1 row)
 
 --This should not work
 SET ROLE test_pgl_ddl_deploy;
 CREATE TABLE foo(id serial primary key);
 RESET ROLE;
 SELECT pgl_ddl_deploy.enable('test1');
+WARNING:  
+  Deployment of auto-replication for set test1 failed
+  because 1 tables are already queued to be added to replication
+  based on your configuration.  These tables need to be added to
+  replication manually and synced, otherwise change your configuration.
+  Debug query: 
+    SELECT n.nspname, c.relname 
+    FROM pg_namespace n
+      INNER JOIN pg_class c ON n.oid = c.relnamespace
+        AND c.relpersistence = 'p'
+      WHERE n.nspname ~* '.*'
+        AND n.nspname !~* '^(pg_catalog|information_schema|pg_temp|pg_toast|pgl_ddl_deploy|pglogical).*'
+        AND EXISTS (SELECT 1
+        FROM pg_index i
+        WHERE i.indrelid = c.oid
+          AND i.indisprimary)
+        AND NOT EXISTS
+        (SELECT 1
+        FROM pglogical.replication_set_relation rsr
+        INNER JOIN pglogical.replication_set r
+          ON r.set_id = rsr.set_id
+        WHERE r.set_name = 'test1'
+          AND rsr.set_reloid = c.oid);
+    
+CONTEXT:  SQL statement "SELECT pgl_ddl_deploy.deployment_check(p_set_name)"
+PL/pgSQL function pgl_ddl_deploy.enable(text) line 6 at SQL statement
+ enable 
+--------
+ f
+(1 row)
+
 SET ROLE test_pgl_ddl_deploy;
 DROP TABLE foo;
 RESET ROLE;
-
 --This should work now
 SELECT pgl_ddl_deploy.enable('test1');
+ enable 
+--------
+ t
+(1 row)
 
 --Enable all the rest
 DO $$
