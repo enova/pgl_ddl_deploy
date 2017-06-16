@@ -213,19 +213,24 @@ WITH vars AS
                         END);
   $BUILD$::TEXT AS declare_constants,
 
+  $BUILD$
+  --If there are any matches to our replication config, get the query
+  --This will either be sent, or logged at this point if not deployable
+  IF v_match_count > 0 THEN
+    --Fresh snapshot for pg_stat_activity
+        PERFORM pg_stat_clear_snapshot();
+
+        SELECT query, backend_xmin
+        INTO v_ddl_sql_raw, v_backend_xmin
+        FROM pgl_ddl_deploy.stat_activity();
+  END IF;
+  $BUILD$::TEXT AS shared_get_query,
 /****
   This is the portion of the event trigger function that evaluates if SQL
   is appropriate to propagate, and does propagate the event.  It is shared
   between the normal and drop event trigger functions.
    */
   $BUILD$
-  --Fresh snapshot for pg_stat_activity
-        PERFORM pg_stat_clear_snapshot();
-
-        SELECT query, backend_xmin
-        INTO v_ddl_sql_raw, v_backend_xmin
-        FROM pgl_ddl_deploy.stat_activity();
-
         /****
           Length must be checked against max length allowed for pg_stat_activity.
           Bail if length equals max.
@@ -360,7 +365,7 @@ WITH vars AS
   $BUILD$::TEXT AS shared_deploy_logic,
   $BUILD$
   ELSEIF (v_match_count > 0 AND v_cmd_count <> v_match_count) THEN
-    SELECT pgl_ddl_deploy.log_unhandled(
+    PERFORM pgl_ddl_deploy.log_unhandled(
      c_set_name,
      v_pid,
      v_ddl_sql_raw,
@@ -444,6 +449,8 @@ BEGIN
 
   $BUILD$||shared_objects_check||$BUILD$
 
+  $BUILD$||shared_get_query||$BUILD$
+
   IF (v_match_count > 0 AND v_cmd_count = v_match_count)
       THEN
 
@@ -525,6 +532,8 @@ BEGIN
           ELSE 0 END) AS excluded_schema_count
     INTO v_cmd_count, v_match_count, v_excluded_count
   FROM pg_event_trigger_dropped_objects();
+
+  $BUILD$||shared_get_query||$BUILD$
 
   IF (v_match_count > 0 AND v_excluded_count = 0)
 
