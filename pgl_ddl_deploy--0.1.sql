@@ -64,18 +64,20 @@ CREATE TABLE pgl_ddl_deploy.unhandled (
     set_name NAME,
     pid INT,
     executed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    ddl_sql TEXT,
+    ddl_sql_raw TEXT,
     command_tag TEXT,
     reason TEXT,
+    backend_xmin BIGINT,
     CONSTRAINT valid_reason CHECK (reason IN('mixed_objects','rejected_command_tags','rejected_multi_statement','too_long','unsupported_command'))
     );
 
 CREATE FUNCTION pgl_ddl_deploy.log_unhandled
 (p_set_name TEXT,
  p_pid INT,
- p_ddl_sql TEXT,
+ p_ddl_sql_raw TEXT,
  p_command_tag TEXT,
- p_reason TEXT)
+ p_reason TEXT,
+ p_backend_xmin BIGINT)
 RETURNS VOID AS
 $BODY$
 DECLARE
@@ -85,16 +87,18 @@ INSERT INTO pgl_ddl_deploy.unhandled
   (set_name,
    pid,
    executed_at,
-   ddl_sql,
+   ddl_sql_raw,
    command_tag,
-   reason)
+   reason,
+   backend_xmin)
 VALUES
   (p_set_name,
    p_pid,
    current_timestamp,
-   p_ddl_sql,
+   p_ddl_sql_raw,
    p_command_tag,
-   p_reason);
+   p_reason,
+   p_backend_xmin);
 RAISE WARNING '%', c_unhandled_msg;
 END;
 $BODY$
@@ -243,7 +247,8 @@ WITH vars AS
                v_pid,
                v_ddl_sql_raw,
                TG_TAG,
-               'too_long');
+               'too_long',
+               v_backend_xmin);
           RETURN;
         END IF;
 
@@ -256,7 +261,14 @@ WITH vars AS
             WHERE set_name = c_set_name
               AND backend_xmin = v_backend_xmin
               AND ddl_sql_raw = v_ddl_sql_raw
-              AND pid = v_pid) THEN
+              AND pid = v_pid)
+           OR EXISTS
+           (SELECT 1 FROM pgl_ddl_deploy.unhandled
+            WHERE set_name = c_set_name
+              AND backend_xmin = v_backend_xmin
+              AND ddl_sql_raw = v_ddl_sql_raw
+              AND pid = v_pid)
+            THEN
           RETURN;
         END IF;
 
@@ -270,7 +282,8 @@ WITH vars AS
                v_pid,
                v_ddl_sql_raw,
                TG_TAG,
-               'rejected_command_tags');
+               'rejected_command_tags',
+               v_backend_xmin);
           RETURN;
         /****
           If we are not allowing multi-statements at all, reject
@@ -281,7 +294,8 @@ WITH vars AS
                v_pid,
                v_ddl_sql_raw,
                TG_TAG,
-               'rejected_multi_statement');
+               'rejected_multi_statement',
+               v_backend_xmin);
           RETURN;
         END IF;
 
@@ -370,7 +384,8 @@ WITH vars AS
      v_pid,
      v_ddl_sql_raw,
      TG_TAG,
-     'mixed_objects');
+     'mixed_objects',
+     v_backend_xmin);
   $BUILD$::TEXT AS shared_mixed_obj_logic,
 
   $BUILD$
@@ -602,7 +617,8 @@ BEGIN
                v_pid,
                v_ddl_sql_raw,
                TG_TAG,
-               'unsupported_command');
+               'unsupported_command',
+               v_backend_xmin);
   END IF;
 
 $BUILD$||shared_exception_handler||$BUILD$
