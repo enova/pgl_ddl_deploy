@@ -7,3 +7,6 @@ CREATE TABLE foo (id SERIAL PRIMARY KEY);
 --This is an edge case that currently can't be dealt with well with filtered replication.
 ALTER TABLE foobar.foo ADD COLUMN foo_id INT REFERENCES foo(id);
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+
+DROP TABLE foobar.foo CASCADE;
+DROP TABLE foo CASCADE;
