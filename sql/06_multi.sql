@@ -27,6 +27,10 @@ SELECT set_name, ddl_sql, command_tag, reason FROM pgl_ddl_deploy.unhandled ORDE
 \! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "CREATE TABLE foo(id int primary key);"
 \! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "CREATE TABLE foobar.foo(id int primary key);"
 
+--This is an edge case that currently can't be dealt with well with targeted replication.
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "ALTER TABLE foobar.foo ADD COLUMN foo_id INT REFERENCES foo(id);"
+SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+
 --This should be allowed by some but not others
 \! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "DROP TABLE foo, foobar.foo CASCADE;"
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
