@@ -33,7 +33,8 @@ CREATE TABLE pgl_ddl_deploy.set_config (
     set_name NAME PRIMARY KEY,
     include_schema_regex TEXT NOT NULL,
     lock_safe_deployment BOOLEAN DEFAULT FALSE NOT NULL,
-    allow_multi_statements BOOLEAN DEFAULT TRUE NOT NULL
+    allow_multi_statements BOOLEAN DEFAULT TRUE NOT NULL,
+    CONSTRAINT valid_regex CHECK (CASE WHEN regexp_replace('',include_schema_regex,'') = '' THEN TRUE ELSE FALSE END)
     );
 
 SELECT pg_catalog.pg_extension_config_dump('pgl_ddl_deploy.set_config', '');

@@ -14,3 +14,7 @@ INSERT INTO pgl_ddl_deploy.set_config (set_name, include_schema_regex, lock_safe
 VALUES ('test7','^foo.*',false, true);
 INSERT INTO pgl_ddl_deploy.set_config (set_name, include_schema_regex, lock_safe_deployment, allow_multi_statements)
 VALUES ('test8','^foo.*',false, false);
+
+--Ensure regex must be valid
+INSERT INTO pgl_ddl_deploy.set_config (set_name, include_schema_regex, lock_safe_deployment, allow_multi_statements)
+VALUES ('test9','^foo.*((',false, false);
