@@ -19,18 +19,18 @@ WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
 WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
 DROP TABLE
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
- set_name |      ddl_sql_raw      |     ddl_sql_sent      
-----------+-----------------------+-----------------------
- test8    | CREATE SCHEMA foobar; | CREATE SCHEMA foobar;
- test7    | CREATE SCHEMA foobar; | CREATE SCHEMA foobar;
- test6    | CREATE SCHEMA foobar; | CREATE SCHEMA foobar;
- test5    | CREATE SCHEMA foobar; | CREATE SCHEMA foobar;
- test4    | CREATE SCHEMA foobar; | CREATE SCHEMA foobar;
- test3    | CREATE SCHEMA foobar; | CREATE SCHEMA foobar;
- test2    | CREATE SCHEMA foobar; | CREATE SCHEMA foobar;
- test1    | CREATE SCHEMA foobar; | CREATE SCHEMA foobar;
- test4    | DROP SEQUENCE foo;    | DROP SEQUENCE foo;
- test3    | DROP SEQUENCE foo;    | DROP SEQUENCE foo;
+ set_name |         ddl_sql_raw         |        ddl_sql_sent         
+----------+-----------------------------+-----------------------------
+ test8    | CREATE SCHEMA foobar;       | CREATE SCHEMA foobar;
+ test7    | CREATE SCHEMA foobar;       | CREATE SCHEMA foobar;
+ test6    | CREATE SCHEMA foobar;       | CREATE SCHEMA foobar;
+ test5    | CREATE SCHEMA foobar;       | CREATE SCHEMA foobar;
+ test4    | CREATE SCHEMA foobar;       | CREATE SCHEMA foobar;
+ test3    | CREATE SCHEMA foobar;       | CREATE SCHEMA foobar;
+ test2    | CREATE SCHEMA foobar;       | CREATE SCHEMA foobar;
+ test1    | CREATE SCHEMA foobar;       | CREATE SCHEMA foobar;
+ test8    | DROP SCHEMA foobar CASCADE; | DROP SCHEMA foobar CASCADE;
+ test7    | DROP SCHEMA foobar CASCADE; | DROP SCHEMA foobar CASCADE;
 (10 rows)
 
 SELECT set_name, ddl_sql_raw, command_tag, reason FROM pgl_ddl_deploy.unhandled ORDER BY id DESC LIMIT 10;
