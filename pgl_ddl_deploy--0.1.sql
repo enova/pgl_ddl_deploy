@@ -158,6 +158,60 @@ END;
 $BODY$
 LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.add_ext_object
+  (p_type text -- 'EVENT TRIGGER' OR 'FUNCTION'
+  , p_full_obj_name text)
+RETURNS VOID AS
+$BODY$
+BEGIN
+PERFORM pgl_ddl_deploy.toggle_ext_object(p_type, p_full_obj_name, 'ADD');
+END;
+$BODY$
+LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.drop_ext_object
+  (p_type text -- 'EVENT TRIGGER' OR 'FUNCTION'
+  , p_full_obj_name text)
+RETURNS VOID AS
+$BODY$
+BEGIN
+PERFORM pgl_ddl_deploy.toggle_ext_object(p_type, p_full_obj_name, 'DROP');
+END;
+$BODY$
+LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.toggle_ext_object
+  (p_type text -- 'EVENT TRIGGER' OR 'FUNCTION'
+  , p_full_obj_name text
+  , p_toggle text)
+RETURNS VOID AS
+$BODY$
+DECLARE
+  c_valid_types TEXT[] = ARRAY['EVENT TRIGGER','FUNCTION'];
+  c_valid_toggles TEXT[] = ARRAY['ADD','DROP'];
+BEGIN
+
+IF NOT (SELECT ARRAY[p_type] && c_valid_types) THEN
+  RAISE EXCEPTION 'Must pass one of % as 1st arg.', array_to_string(c_valid_types);
+END IF;
+
+IF NOT (SELECT ARRAY[p_toggle] && c_valid_toggles) THEN
+  RAISE EXCEPTION 'Must pass one of % as 3rd arg.', array_to_string(c_valid_toggles);
+END IF;
+
+EXECUTE 'ALTER EXTENSION pgl_ddl_deploy '||p_toggle||' '||p_type||' '||p_full_obj_name;
+
+EXCEPTION
+  WHEN undefined_function THEN
+    RETURN;
+  WHEN undefined_object THEN
+    RETURN;
+  WHEN object_not_in_prerequisite_state THEN
+    RETURN;
+END;
+$BODY$
+LANGUAGE plpgsql;
+
 CREATE VIEW pgl_ddl_deploy.event_trigger_schema AS
 WITH vars AS
 (SELECT set_name,
@@ -685,6 +739,19 @@ SELECT b.set_name,
   b.auto_replication_drop_trigger,
   b.auto_replication_unsupported_trigger,
   $BUILD$
+  DROP TABLE IF EXISTS tmp_objs;
+  CREATE TEMP TABLE tmp_objs (obj_type, obj_name) AS (
+  VALUES
+    ('EVENT TRIGGER','$BUILD$||auto_replication_trigger_name||$BUILD$'),
+    ('EVENT TRIGGER','$BUILD$||auto_replication_drop_trigger_name||$BUILD$'),
+    ('EVENT TRIGGER','$BUILD$||auto_replication_unsupported_trigger_name||$BUILD$'),
+    ('FUNCTION','$BUILD$||auto_replication_function_name||$BUILD$()'),
+    ('FUNCTION','$BUILD$||auto_replication_drop_function_name||$BUILD$()'),
+    ('FUNCTION','$BUILD$||auto_replication_unsupported_function_name||$BUILD$()')
+  );
+
+  SELECT pgl_ddl_deploy.drop_ext_object(obj_type, obj_name)
+  FROM tmp_objs;
   DROP EVENT TRIGGER IF EXISTS $BUILD$||auto_replication_trigger_name||', '||auto_replication_drop_trigger_name||', '||auto_replication_unsupported_trigger_name||$BUILD$;
   DROP FUNCTION IF EXISTS $BUILD$||auto_replication_function_name||$BUILD$();
   DROP FUNCTION IF EXISTS $BUILD$||auto_replication_drop_function_name||$BUILD$();
@@ -695,6 +762,8 @@ SELECT b.set_name,
   $BUILD$||auto_replication_trigger||$BUILD$
   $BUILD$||auto_replication_drop_trigger||$BUILD$
   $BUILD$||auto_replication_unsupported_trigger||$BUILD$
+  SELECT pgl_ddl_deploy.add_ext_object(obj_type, obj_name)
+  FROM tmp_objs;
   $BUILD$ AS deploy_sql,
   $BUILD$
   ALTER EVENT TRIGGER $BUILD$||auto_replication_trigger_name||$BUILD$ DISABLE;
