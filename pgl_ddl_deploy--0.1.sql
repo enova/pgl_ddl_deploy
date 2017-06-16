@@ -612,7 +612,7 @@ BEGIN
     INTO v_ddl_sql_raw
     FROM pgl_ddl_deploy.stat_activity();
     
-    SELECT pgl_ddl_deploy.log_unhandled(
+    PERFORM pgl_ddl_deploy.log_unhandled(
                c_set_name,
                v_pid,
                v_ddl_sql_raw,
