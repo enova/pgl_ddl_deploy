@@ -29,7 +29,7 @@ SELECT '{
 $BODY$
 LANGUAGE SQL IMMUTABLE;
 
-CREATE TABLE pgl_ddl_deploy.set_config (
+CREATE TABLE pgl_ddl_deploy.set_configs (
     set_name NAME PRIMARY KEY,
     include_schema_regex TEXT NOT NULL,
     lock_safe_deployment BOOLEAN DEFAULT FALSE NOT NULL,
@@ -37,7 +37,7 @@ CREATE TABLE pgl_ddl_deploy.set_config (
     CONSTRAINT valid_regex CHECK (CASE WHEN regexp_replace('',include_schema_regex,'') = '' THEN TRUE ELSE FALSE END)
     );
 
-SELECT pg_catalog.pg_extension_config_dump('pgl_ddl_deploy.set_config', '');
+SELECT pg_catalog.pg_extension_config_dump('pgl_ddl_deploy.set_configs', '');
 
 CREATE TABLE pgl_ddl_deploy.events (
     id SERIAL PRIMARY KEY,
@@ -444,7 +444,7 @@ WITH vars AS
       AND object_identity ~* c_include_schema_regex);
   $BUILD$::TEXT AS shared_objects_check
 FROM pglogical.replication_set rs
-INNER JOIN pgl_ddl_deploy.set_config sc USING (set_name)
+INNER JOIN pgl_ddl_deploy.set_configs sc USING (set_name)
 )
 
 , build AS (
@@ -718,7 +718,7 @@ BEGIN
 
 SELECT include_schema_regex
 INTO c_include_schema_regex
-FROM pgl_ddl_deploy.set_config
+FROM pgl_ddl_deploy.set_configs
 WHERE set_name = p_set_name; 
 
 SELECT COUNT(1)

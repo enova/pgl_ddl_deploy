@@ -44,7 +44,7 @@ CREATE EXTENSION pgl_ddl_deploy;
 SELECT pgl_ddl_deploy.add_role(oid) FROM pg_roles WHERE rolname = 'app_owner';
 
 --Setup configs
-INSERT INTO pgl_ddl_deploy.set_config
+INSERT INTO pgl_ddl_deploy.set_configs
 (set_name,
 include_schema_regex,
 lock_safe_deployment,
@@ -71,7 +71,7 @@ Provider:
 ```sql
 --Deploy DDL replication
 SELECT pgl_ddl_deploy.deploy(set_name)
-FROM pgl_ddl_deploy.set_config;
+FROM pgl_ddl_deploy.set_configs;
 
 --App deployment role
 SET ROLE app_owner;
