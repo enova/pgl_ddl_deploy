@@ -277,6 +277,7 @@ WITH vars AS
                v_ddl_sql_raw,
                TG_TAG,
                'rejected_multi_statement');
+          RETURN;
         END IF;
 
         v_ddl_sql_sent = v_ddl_sql_raw;
