@@ -490,12 +490,7 @@ WITH vars AS
             THEN 1
           ELSE 0 END) AS relevant_schema_count
     INTO v_cmd_count, v_match_count
-  FROM pg_event_trigger_ddl_commands()
-  WHERE
-    schema_name ~* c_include_schema_regex
-    AND schema_name !~* c_exclude_always
-    OR (object_type = 'schema'
-      AND object_identity ~* c_include_schema_regex);
+  FROM pg_event_trigger_ddl_commands();
   $BUILD$::TEXT AS shared_objects_check
 FROM pglogical.replication_set rs
 INNER JOIN pgl_ddl_deploy.set_configs sc USING (set_name)

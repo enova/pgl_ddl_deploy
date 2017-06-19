@@ -1,4 +1,5 @@
 SET client_min_messages TO warning;
+\set VERBOSITY TERSE
 SET ROLE test_pgl_ddl_deploy;
 
 CREATE TABLE foo AS

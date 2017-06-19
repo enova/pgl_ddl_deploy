@@ -1,4 +1,5 @@
 SET client_min_messages = warning;
+\set VERBOSITY TERSE
 /***
 No deploy allowed if table would be added to replication
 ***/

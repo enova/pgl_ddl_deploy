@@ -1,43 +1,12 @@
 SET client_min_messages TO warning;
+\set VERBOSITY TERSE
 SET ROLE test_pgl_ddl_deploy;
 CREATE TABLE foo AS
 SELECT 1 AS myfield;
 WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
-CONTEXT:  SQL statement "SELECT pgl_ddl_deploy.log_unhandled(
-               c_set_name,
-               v_pid,
-               v_ddl_sql_raw,
-               TG_TAG,
-               'unsupported_command',
-               v_backend_xmin)"
-PL/pgSQL function pgl_ddl_deploy.auto_replicate_ddl_unsupported_test1() line 80 at PERFORM
 WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
-CONTEXT:  SQL statement "SELECT pgl_ddl_deploy.log_unhandled(
-               c_set_name,
-               v_pid,
-               v_ddl_sql_raw,
-               TG_TAG,
-               'unsupported_command',
-               v_backend_xmin)"
-PL/pgSQL function pgl_ddl_deploy.auto_replicate_ddl_unsupported_test2() line 80 at PERFORM
 WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
-CONTEXT:  SQL statement "SELECT pgl_ddl_deploy.log_unhandled(
-               c_set_name,
-               v_pid,
-               v_ddl_sql_raw,
-               TG_TAG,
-               'unsupported_command',
-               v_backend_xmin)"
-PL/pgSQL function pgl_ddl_deploy.auto_replicate_ddl_unsupported_test3() line 80 at PERFORM
 WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
-CONTEXT:  SQL statement "SELECT pgl_ddl_deploy.log_unhandled(
-               c_set_name,
-               v_pid,
-               v_ddl_sql_raw,
-               TG_TAG,
-               'unsupported_command',
-               v_backend_xmin)"
-PL/pgSQL function pgl_ddl_deploy.auto_replicate_ddl_unsupported_test4() line 80 at PERFORM
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
  set_name |          ddl_sql_raw           |          ddl_sql_sent          
 ----------+--------------------------------+--------------------------------
@@ -74,77 +43,13 @@ SELECT set_name, ddl_sql_raw, command_tag, reason FROM pgl_ddl_deploy.unhandled 
 
 SELECT 1 AS myfield INTO foobar.foo;
 WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
-CONTEXT:  SQL statement "SELECT pgl_ddl_deploy.log_unhandled(
-               c_set_name,
-               v_pid,
-               v_ddl_sql_raw,
-               TG_TAG,
-               'unsupported_command',
-               v_backend_xmin)"
-PL/pgSQL function pgl_ddl_deploy.auto_replicate_ddl_unsupported_test1() line 80 at PERFORM
 WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
-CONTEXT:  SQL statement "SELECT pgl_ddl_deploy.log_unhandled(
-               c_set_name,
-               v_pid,
-               v_ddl_sql_raw,
-               TG_TAG,
-               'unsupported_command',
-               v_backend_xmin)"
-PL/pgSQL function pgl_ddl_deploy.auto_replicate_ddl_unsupported_test2() line 80 at PERFORM
 WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
-CONTEXT:  SQL statement "SELECT pgl_ddl_deploy.log_unhandled(
-               c_set_name,
-               v_pid,
-               v_ddl_sql_raw,
-               TG_TAG,
-               'unsupported_command',
-               v_backend_xmin)"
-PL/pgSQL function pgl_ddl_deploy.auto_replicate_ddl_unsupported_test3() line 80 at PERFORM
 WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
-CONTEXT:  SQL statement "SELECT pgl_ddl_deploy.log_unhandled(
-               c_set_name,
-               v_pid,
-               v_ddl_sql_raw,
-               TG_TAG,
-               'unsupported_command',
-               v_backend_xmin)"
-PL/pgSQL function pgl_ddl_deploy.auto_replicate_ddl_unsupported_test4() line 80 at PERFORM
 WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
-CONTEXT:  SQL statement "SELECT pgl_ddl_deploy.log_unhandled(
-               c_set_name,
-               v_pid,
-               v_ddl_sql_raw,
-               TG_TAG,
-               'unsupported_command',
-               v_backend_xmin)"
-PL/pgSQL function pgl_ddl_deploy.auto_replicate_ddl_unsupported_test5() line 80 at PERFORM
 WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
-CONTEXT:  SQL statement "SELECT pgl_ddl_deploy.log_unhandled(
-               c_set_name,
-               v_pid,
-               v_ddl_sql_raw,
-               TG_TAG,
-               'unsupported_command',
-               v_backend_xmin)"
-PL/pgSQL function pgl_ddl_deploy.auto_replicate_ddl_unsupported_test6() line 80 at PERFORM
 WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
-CONTEXT:  SQL statement "SELECT pgl_ddl_deploy.log_unhandled(
-               c_set_name,
-               v_pid,
-               v_ddl_sql_raw,
-               TG_TAG,
-               'unsupported_command',
-               v_backend_xmin)"
-PL/pgSQL function pgl_ddl_deploy.auto_replicate_ddl_unsupported_test7() line 80 at PERFORM
 WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
-CONTEXT:  SQL statement "SELECT pgl_ddl_deploy.log_unhandled(
-               c_set_name,
-               v_pid,
-               v_ddl_sql_raw,
-               TG_TAG,
-               'unsupported_command',
-               v_backend_xmin)"
-PL/pgSQL function pgl_ddl_deploy.auto_replicate_ddl_unsupported_test8() line 80 at PERFORM
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
  set_name |          ddl_sql_raw           |          ddl_sql_sent          
 ----------+--------------------------------+--------------------------------
