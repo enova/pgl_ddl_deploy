@@ -584,7 +584,8 @@ BEGIN
           WHEN schema_name ~* c_include_schema_regex
             AND schema_name !~* c_exclude_always
             OR (object_type = 'schema'
-              AND object_identity ~* c_include_schema_regex)
+              AND object_identity ~* c_include_schema_regex
+              AND object_identity !~* c_exclude_always)
             THEN 1
           ELSE 0 END) AS relevant_schema_count
     , SUM(CASE
@@ -925,10 +926,13 @@ BEGIN
     v_sql:='
     GRANT USAGE ON SCHEMA pglogical TO '||v_rec.rolname||';
     GRANT USAGE ON SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
+    GRANT EXECUTE ON FUNCTION pglogical.replicate_ddl_command(text, text[]) TO '||v_rec.rolname||';
+    GRANT EXECUTE ON FUNCTION pglogical.replication_set_add_table(name, regclass, boolean) TO '||v_rec.rolname||';
+    GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.sql_command_tags(text) TO '||v_rec.rolname||';
     GRANT INSERT, UPDATE, SELECT ON ALL TABLES IN SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
     GRANT USAGE ON ALL SEQUENCES IN SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
     GRANT SELECT ON ALL TABLES IN SCHEMA pglogical TO '||v_rec.rolname||';';
-
+    
     EXECUTE v_sql;
     RETURN true; 
     END LOOP;
@@ -936,3 +940,10 @@ RETURN false;
 END;
 $BODY$
 LANGUAGE plpgsql;
+
+GRANT USAGE ON SCHEMA pgl_ddl_deploy TO PUBLIC;
+GRANT USAGE ON SCHEMA pglogical TO PUBLIC;
+REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA pglogical FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION pglogical.dependency_check_trigger() TO PUBLIC;
+GRANT EXECUTE ON FUNCTION pglogical.truncate_trigger_add() TO PUBLIC;
+REVOKE EXECUTE ON FUNCTION pgl_ddl_deploy.sql_command_tags(text) FROM PUBLIC;
