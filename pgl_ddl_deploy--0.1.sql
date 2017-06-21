@@ -72,6 +72,8 @@ CREATE TABLE pgl_ddl_deploy.unhandled (
     CONSTRAINT valid_reason CHECK (reason IN('mixed_objects','rejected_command_tags','rejected_multi_statement','too_long','unsupported_command'))
     );
 
+CREATE UNIQUE INDEX ON pgl_ddl_deploy.unhandled (set_name, pid, backend_xmin, md5(ddl_sql_raw));
+
 CREATE FUNCTION pgl_ddl_deploy.log_unhandled
 (p_set_name TEXT,
  p_pid INT,
