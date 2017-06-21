@@ -1,0 +1,21 @@
+SET client_min_messages TO warning;
+\set VERBOSITY TERSE
+SET SESSION_REPLICATION_ROLE TO REPLICA;
+CREATE TABLE i_want_to_ignore_evts (id serial primary key);
+DROP TABLE i_want_to_ignore_evts;
+SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |      ddl_sql_raw       |      ddl_sql_sent      
+----------+------------------------+------------------------
+ test8    | DROP TABLE foobar.foo; | DROP TABLE foobar.foo;
+ test7    | DROP TABLE foobar.foo; | DROP TABLE foobar.foo;
+ test6    | DROP TABLE foobar.foo; | DROP TABLE foobar.foo;
+ test5    | DROP TABLE foobar.foo; | DROP TABLE foobar.foo;
+ test4    | DROP TABLE foobar.foo; | DROP TABLE foobar.foo;
+ test3    | DROP TABLE foobar.foo; | DROP TABLE foobar.foo;
+ test2    | DROP TABLE foobar.foo; | DROP TABLE foobar.foo;
+ test1    | DROP TABLE foobar.foo; | DROP TABLE foobar.foo;
+ test4    | DROP TABLE foo;        | DROP TABLE foo;
+ test3    | DROP TABLE foo;        | DROP TABLE foo;
+(10 rows)
+
+RESET SESSION_REPLICATION_ROLE;
