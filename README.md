@@ -32,9 +32,8 @@ and because there are a lot of specifics related to each replication technology.
 We would welcome a project to extend this to work with any replication technology.
 
 ## Features
-- Any SQL statement can be propagated directly to subscribers without any modification to
-deployment processes.  Event triggers will fire on relevant DDL statements and propagate to
-subscribers, based on your configuration.
+- Any DDL SQL statement can be propagated directly to subscribers without your developers needing
+to overhaul their migration process or know the intricacies of replication.
 
 - Tables will also be automatically added to replication upon creation.
 
@@ -43,6 +42,9 @@ replicate only certain schemas within a replication set.
 
 - There is an option to deploy in a lock-safe way on subscribers.  Note that this means
 replication will lag until all blockers finish running or are terminated.
+
+- In some edge cases, alerting can be built around provided logging for the DBA to then
+handle possible manual deployments
 
 ## A Full Example
 Since we always look for documentation by example, we show this first.  Assuming pglogical
@@ -233,7 +235,8 @@ SELECT pgl_ddl_deploy.deploy(set_name);
 ```
 
 - Not all of these events are handled in the same way - see Limitations and Restrictions below
-- Currently, the event trigger command list is not configurable
+- Currently, the event trigger command list is not configurable.  But such a feature would be 
+straightforward to add if requested.
 - Note that if, based on your configuration, you have tables that *should* be added to
 replication already, but are not, you will not be allowed to deploy.  This is because
 DDL replication should only be expected to automatically add *new* tables to replication.
@@ -280,19 +283,23 @@ warnings raised at `WARNING` level in case of issues:
 
 ## Limitations and Restrictions
 1. A single DDL SQL statement which alters tables both replicated and non-replicated cannot
-be supported.  For example, if I have `include_schema_regex` which includes only
-'^replicated.*', this is unsupported:
+be supported.  For example, if I have `include_schema_regex` which includes only the regex
+`'^replicated.*'`, this is unsupported:
 ```sql
 DROP TABLE replicated.foo, notreplicated.bar;
 ```
 
-Likewise, this can be problematic if you are using filtered replication:
+Likewise, the following can be problematic if you are using filtered replication:
 ```sql
 ALTER TABLE replicated.foo ADD COLUMN foo_id REFERENCES unreplicated.foo (id);
 ```
 
-Depending on your environment, such cases may be very rare, or possibly common.  In any case,
-what will happen if such a statement gets propagated is that it will fail on the subscriber,
+Depending on your environment, such cases may be very rare, or possibly common.  For example, such
+edge cases are far less likely when you want to do 1:1 replication of just about all tables in your
+application database.  Also, if you are not likely to have relationships between schemas you both
+are and are not replicating, then edge cases will be unlikely.
+
+In any case, what will happen if such a statement gets propagated is that it will fail on the subscriber,
 and you will need to:
 - Manually deploy, if necessary.  In the example above, you might need to manually run:
 ```sql
@@ -315,32 +322,43 @@ will be logged.  It is recommended to run higher settings (10-15k for example) f
 `track_activity_query_size` to use this framework effectively.
 
 ## Multi-Statement SQL Limitations
-There is inherently NO LIMITATION on what kind of SQL can be supported by this framework if a client
-sends SQL statements 1 by 1, which is sometimes true but sometimes not.  For example, a psql script
-will execute even a long SQL script 1 statement at a time, and so can be supported very well. But
-python's psycopg2 will send a single blob of SQL to the client at once.  For example:
+It is important to understand that limitations on multi-statement SQL has nothing to do with
+executing multiple SQL statements at once, or in one transaction.  Of course, it is assumed that will
+often or even usually be the case, and this framework can handle that just fine.
+
+The complexities and limitations come when the *client* sends all SQL statements as one single string
+to Postgres.  Assume the following SQL statements:
 
 ```sql
 CREATE TABLE foo (id serial primary key, bla text);
 INSERT INTO foo (bla) VALUES ('hello world');
 ```
 
-If this was in a file that I called via psql, it would run fine.  But if I ran in python:
-```python
-cur.execute(sql)
-```
-then it would be sent to Postgres as 1 SQL statement.  In such a case, the SQL statement cannot
-be automatically run on the subscriber.  Instead, it will be logged as a `WARNING` and put into
-the `unhandled` table for manual processing.
+If this was in a file that I called via psql, it would run as two separate SQL command strings.
+
+However, if in python or ruby's ActiveRecord I create a single string as above and execute it,
+then it would be sent to Postgres as 1 single SQL command string.  In such a case, this framework is
+aware that a multi-statement is being executed by using Postgres' parser to get the command tags of 
+the full SQL statement.  You have a little freedom here with the `allow_multi_statements` option:
+- If `false`, pgl_ddl_deploy will *only* auto-replicate a client SQL statement that contains 1 command
+tag that matches the event trigger command tag.  That's really safe, but it means you may have a lot
+more unhandled deployments.
+- If `true`, pgl_ddl_deploy will *only* auto-replicate DDL that contains **safe** command tags to
+propagate.  For example, mixed DDL and DML is forbidden, because executing such a statement would in
+effect double-execute DML on both provider and subscriber.  However, if you have a `CREATE TABLE` and
+`ALTER TABLE` in one command, assuming the table should be included in replication based on your 
+configuration, then such a statement will be sent to subscribers.  But of course, we can't guarantee
+that all DDL statements in this command are on the same table - so there could be edge cases. 
+
+In any case that a SQL statement cannot be automatically run on the subscriber based on these analyses,
+instead it will be logged as a `WARNING` and put into the `unhandled` table for manual processing.
 
 The regression suite in the `sql` folder has examples of several of these cases.
 
 Thus, limitations on multi-statement SQL is largely based on how your client sends its messages in SQL to
-Postgres, and likewise how your developers tend to write SQL.  The good thing about this is that
-pgl_ddl_deploy does a lot of work to figure out if it is getting a multi-statement by using the
-built-in parser to get the list of command tags in a SQL statement.
-
-It is very likely that replication will break in such cases, and you will have to manually intervene.
+Postgres, and likewise how your developers tend to write SQL.  The good thing about this is that it
+ought to be much easier to train developers to logically separate SQL in their migrations, as opposed to
+far more work we need to do when we don't have any kind of transparent DDL replication.
 
 These limitations obviously have to be weighed against the cost of not using a framework like this
 at all in your environment.
@@ -349,16 +367,25 @@ The `unhandled` table and `WARNING` logs are designed to be leveraged with monit
 alerting around when manual intervention is required for DDL changes.
 
 ## Help Wanted Features
+We are currently using the parser only to get the list of command tags.  One big advantage to this is
+that it isn't going to be difficult to maintain as Postgres develops.  One disadvantage is that it tells
+us nothing about the actual objects being modified, nor the type of modification.
+
 We believe it is feasible to use the parser to actually only process the parts of a multi-statement
-SQL command that we want to, but this far more ambitious.  We would need to leverage the different
-structures of each DDL command's parsetree to determine if the table is in a schema we care to
-replicate.  Then, we would need to use the lex code to take out the piece we want. 
+SQL command that we want to, but this far more ambitious, and would be more work to maintain.  We would
+need to leverage the different structures of each DDL command's `parsetree` to determine if the table is
+in a schema we care to replicate.  Then, we would need to use the parser's lex code to take out the
+piece(s) we want.
+
+Theoretically speaking, don't we have all that we need in the SQL statement + the parser to
+programatically use only what we want and send it to subscribers?  I think we do, but lots of work 
+would be required, and we would welcome those with more comfort in the parser code to help if interested.
 
 # For Developers
 ## Regression testing
 You can run the regression suite, which must be on a server that has pglogical packages
 available, and a cluster that is configured to allow creating the pglogical extension (i.e. adding
-it to shared_preload_libraries).  Note that the regression suite does not do any cross-server
+it to `shared_preload_libraries`).  Note that the regression suite does not do any cross-server
 replication testing, but it does cover a wide variety of replication cases and the core of what is
 needed to verify DDL replication.
 
