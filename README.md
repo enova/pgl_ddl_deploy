@@ -1,21 +1,35 @@
 # pgl_ddl_deploy
-Automated DDL deployment using Pglogical
+Transparent DDL replication for Postgres 9.5+
 
 ## High Level Description
-As of Postgres 10.0, there is no deeply native way to propagate DDL to other DB clusters.
-Normally this is a puzzle with logical replication, where we have excellent DML replication
-but are left to figure out DDL propagation in the application deployment process.
+With any current logical replication technology for Postgres, we normally have excellent
+ways to replicate DML events (`INSERT`, `UPDATE`, `DELETE`), but are left to figure out
+propagating DDL changes on our own.  That is, when we create new tables, alter tables,
+and the like, we have to manage this separately in our application deployment process in
+order to make those same changes on logical replicas, and add such tables to replication.
 
-This project is an attempt to create a very robust way to do this using the client's SQL
-command combined with event trigger functionality starting with postgres 9.5.  Although it
-does not cover 100% of cases, we believe the functionality and robustness is significant
-enough to add great value in many Postgres environments.
+As of Postgres 10.0, there is no native way to do "transparent DDL replication" to other
+Postgres clusters alongside any logical replication technology, built on standard Postgres.
 
-NOTE: The concept implemented here could be extended with any replication framework that can
+This project is an attempt to do just that.  The framework is built on the following concepts:
+- Event triggers always fire on DDL events, and thus give us immediate access to what we want 
+- Event triggers gives us access (from 9.5+) to what objects are being altered
+- We can see what SQL the client is executing within an event trigger
+- We can validate and choose to propagate that SQL statement to subscribers
+- We can add new tables to replication at the point of creation, prior to any DML execution
+
+In many environments, this may cover most if not all DDL statements that are executed in
+an application environment.  We know this doesn't cover 100% of edge cases, but we believe the
+functionality and robustness is significant enough to add great value in many Postgres
+environments.  We also think it's possible to expand this concept by further leveraging the
+Postgres parser.  There is much detail below on what the Limitations and Restrictions are of
+this framework.
+
+**NOTE**: The concept implemented here could be extended with any replication framework that can
 propagate SQL to subscribers, i.e. skytools and Postgres' built-in logical replication
 starting at 10.0.  The reason this has not already been done is because of time constraints,
 and because there are a lot of specifics related to each replication technology.
-I would welcome a project to extend this to work with any replication technology.
+We would welcome a project to extend this to work with any replication technology.
 
 ## Features
 - Any SQL statement can be propagated directly to subscribers without any modification to
@@ -85,11 +99,12 @@ CREATE SCHEMA happy;
 CREATE TABLE happy.foo(id serial primary key);
 ALTER TABLE happy.foo ADD COLUMN bla TEXT;
 INSERT INTO happy.foo (bla) VALUES (1),(2),(3);
+DELETE FROM happy.foo WHERE bla = 3;
 ```
 
 Subscriber to `default`:
 ```
-postgres=# SELECT * FROM foo;
+SELECT * FROM foo;
  id | bla
 ----+-----
   1 | 1
@@ -97,22 +112,24 @@ postgres=# SELECT * FROM foo;
   3 | 3
 (3 rows)
 
-postgres=# SELECT * FROM happy.foo;
+SELECT * FROM happy.foo;
  id | bla
 ----+-----
   1 | 1
   2 | 2
-  3 | 3
 (3 rows)
 ```
+
+Note that both tables are replicated based on configuration, as are all events
+(inserts, updates, and deletes).
 
 Subscriber to `insert_update`:
 ```
-postgres=# SELECT * FROM foo;
+SELECT * FROM foo;
 ERROR:  relation "foo" does not exist
 LINE 1: SELECT * FROM foo;
 
-postgres=# SELECT * FROM happy.foo;
+SELECT * FROM happy.foo;
  id | bla
 ----+-----
   1 | 1
@@ -120,6 +137,9 @@ postgres=# SELECT * FROM happy.foo;
   3 | 3
 (3 rows)
 ```
+
+Note that the `foo` table (in `public` schema) was not replicated.
+Also, because we are not replicating deletes here, `happy.foo` still has all data.
 
 ## Installation
 The functionality of this requires postgres version 9.5+.  Packages are available.
@@ -151,9 +171,24 @@ There is already a pattern of schemas excluded always that you need not worry ab
 can view them in this function:
 ```sql
 SELECT pgl_ddl_deploy.exclude_regex();
+
+--Check current set_config schemas
+SELECT sc.set_name, n.nspname
+FROM pg_namespace n
+INNER JOIN pgl_ddl_deploy.set_configs sc
+  ON nspname !~* pgl_ddl_deploy.exclude_regex()
+  AND n.nspname ~* sc.include_schema_regex
+ORDER BY sc.set_name, n.nspname;
+
+--Test any regex on current schemas
+SELECT n.nspname
+FROM pg_namespace n
+WHERE nspname !~* pgl_ddl_deploy.exclude_regex()
+  AND n.nspname ~* 'test'
+ORDER BY n.nspname;
 ```
 
-There is no stored procedure to insert/update `set_configs`, which we don't think would add much value
+There are no stored procedures to insert/update `set_configs`, which we don't think would add much value
 at this point.  There is a check constraint in place to ensure the regex is valid.
 
 ## Permissions
@@ -167,10 +202,38 @@ FROM pg_roles
 WHERE rolname IN('app_owner_role');
 ```
 
+## Deployment of Automatic DDL Replication
 To **deploy** (meaning activate) DDL replication for a given replication set, run:
 ```sql
 SELECT pgl_ddl_deploy.deploy(set_name);
 ```
+- From this point on, the event triggers are live and will fire on the following events:
+```
+   command_tag
+-----------------
+ ALTER FUNCTION
+ ALTER SEQUENCE
+ ALTER TABLE
+ ALTER TYPE
+ ALTER VIEW
+ CREATE FUNCTION
+ CREATE SCHEMA
+ CREATE SEQUENCE
+ CREATE TABLE
+ CREATE TABLE AS
+ CREATE TYPE
+ CREATE VIEW
+ DROP FUNCTION
+ DROP SCHEMA
+ DROP SEQUENCE
+ DROP TABLE
+ DROP TYPE
+ DROP VIEW
+ SELECT INTO
+```
+
+- Not all of these events are handled in the same way - see Limitations and Restrictions below
+- Currently, the event trigger command list is not configurable
 - Note that if, based on your configuration, you have tables that *should* be added to
 replication already, but are not, you will not be allowed to deploy.  This is because
 DDL replication should only be expected to automatically add *new* tables to replication.
@@ -180,6 +243,23 @@ DDL replication can be disabled/enabled (this will disable/enable event triggers
 ```sql
 SELECT pgl_ddl_deploy.disable(set_name);
 SELECT pgl_ddl_deploy.enable(set_name);
+```
+
+If you want to **change** the configuration in `set_configs`, you can re-deploy by again running
+`pgl_ddl_deploy.deploy` on the given `set_name`.  There is currently no enforcement/warning if you
+have changed configuration but not deployed, but should be easy to add such a feature.
+
+Note that you are able to override the event triggers completely, for example, if you are an
+administrator who wants to run DDL and you know you don't want that propagated to subscribers.
+You can do this with `SESSION_REPLICATION_ROLE`, i.e.:
+
+```sql
+SET SESSION_REPLICATION_ROLE TO REPLICA;
+
+--I don't care to send this to subscribers
+ALTER TABLE foo SET (autovacuum_vacuum_threshold = 1000);
+
+RESET SESSION_REPLICATION_ROLE;
 ```
 
 # Administration and Monitoring
@@ -253,15 +333,17 @@ then it would be sent to Postgres as 1 SQL statement.  In such a case, the SQL s
 be automatically run on the subscriber.  Instead, it will be logged as a `WARNING` and put into
 the `unhandled` table for manual processing.
 
+The regression suite in the `sql` folder has examples of several of these cases.
+
 Thus, limitations on multi-statement SQL is largely based on how your client sends its messages in SQL to
 Postgres, and likewise how your developers tend to write SQL.  The good thing about this is that
 pgl_ddl_deploy does a lot of work to figure out if it is getting a multi-statement by using the
-built-in parser to get the list of command tags in a SQL statement.  
+built-in parser to get the list of command tags in a SQL statement.
 
 It is very likely that replication will break in such cases, and you will have to manually intervene.
 
 These limitations obviously have to be weighed against the cost of not using a framework like this
-at all.
+at all in your environment.
 
 The `unhandled` table and `WARNING` logs are designed to be leveraged with monitoring to create
 alerting around when manual intervention is required for DDL changes.
@@ -275,8 +357,9 @@ replicate.  Then, we would need to use the lex code to take out the piece we wan
 # For Developers
 ## Regression testing
 You can run the regression suite, which must be on a server that has pglogical packages
-available.  Note that the regression suite does not do any cross-server replication
-testing, but it does cover a wide variety of replication cases and the core of what is
+available, and a cluster that is configured to allow creating the pglogical extension (i.e. adding
+it to shared_preload_libraries).  Note that the regression suite does not do any cross-server
+replication testing, but it does cover a wide variety of replication cases and the core of what is
 needed to verify DDL replication.
 
 As with any extension:
