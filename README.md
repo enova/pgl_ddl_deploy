@@ -312,7 +312,8 @@ addition to server log warnings raised at `WARNING` level in case of issues:
 1. A single DDL SQL statement which alters tables both replicated and
 non-replicated cannot be supported.  For example, if I have
 `include_schema_regex` which includes only the regex `'^replicated.*'`, this is
-unsupported: ```sql
+unsupported:
+```sql
 DROP TABLE replicated.foo, notreplicated.bar;
 ```
 
