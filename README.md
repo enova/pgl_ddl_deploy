@@ -1,4 +1,4 @@
-# pgl_ddl_deploy
+# Pglogical DDL Deployment (pgl_ddl_deploy)
 Transparent DDL replication for Postgres 9.5+
 
 ## High Level Description
