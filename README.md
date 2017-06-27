@@ -1,7 +1,37 @@
 # Pglogical DDL Deployment (pgl_ddl_deploy)
+
 Transparent DDL replication for Postgres 9.5+
 
-## High Level Description
+[Overview](#overview)
+- [High Level Description](#high_level)
+- [Features](#features)
+- [A Full Example](#full_example)
+- [Installation](#installation)
+
+[Setup and Deployment](#setup)
+- [Configuration](#config)
+- [Permissions](#permissions)
+- [Deployment](#deployment)
+- [Monitoring and Administration](#monitoring)
+
+[Limitations and Restrictions](#limitations)
+- [DDL involving multiple tables](#multi_tables)
+- [Unsupported Commands](#unsupported)
+- [`track_activity_query_size` Limitations](#activity)
+- [Multi-Statement Client SQL Limitations](#multi_statement)
+
+[Resolving DDL Replication Issues](#resolve)
+- [Resolving Failed DDL on Subscribers](#resolve_failed)
+- [Resolving Unhandled DDL](#resolve_unhandled)
+
+[For Developers](#devs)
+- [Help Wanted Features](#help_wanted)
+- [Regression testing](#regression)
+
+# <a name="overview"></a>Overview
+
+## <a name="high_level"></a>High Level Description
+
 With any current logical replication technology for Postgres, we normally have
 excellent ways to replicate DML events (`INSERT`, `UPDATE`, `DELETE`), but are
 left to figure out propagating DDL changes on our own.  That is, when we create
@@ -37,7 +67,8 @@ been done is because of time constraints, and because there are a lot of
 specifics related to each replication technology. We would welcome a project to
 extend this to work with any replication technology.
 
-## Features
+## <a name="features"></a>Features
+
 - Any DDL SQL statement can be propagated directly to subscribers without your
   developers needing to overhaul their migration process or know the intricacies
 of replication.
@@ -54,7 +85,8 @@ terminated.
 - In some edge cases, alerting can be built around provided logging for the DBA
   to then handle possible manual deployments
 
-## A Full Example
+## <a name="full_example"></a>A Full Example
+
 Since we always look for documentation by example, we show this first.  Assuming
 pglogical is already setup, and given these replication sets:
 - `default` - replicate every event
@@ -152,9 +184,17 @@ Note that the `foo` table (in `public` schema) was not replicated.
 Also, because we are not replicating deletes here, `happy.foo` still has all
 data.
 
-## Installation
-The functionality of this requires postgres version 9.5+.  Packages are
-available.
+## <a name="installation"></a>Installation
+
+The functionality of this requires postgres version 9.5+.  Packages will be
+available soon.  To build from source:
+```
+make
+make install
+make installcheck # run regression suite
+```
+
+See the notes below on requirements to run the regression suite.
 
 This extension requires pglogical to be installed before you can create the
 extension in any database. Then the extension can be deployed as any postgres
@@ -165,9 +205,10 @@ CREATE EXTENSION pgl_ddl_deploy;
 
 **This extension needs to be installed on provider and all subscribers.**
 
-# Setting up DDL replication
+# <a name="setup"></a>Setup and Deployment 
 
-## Configuration
+## <a name="config"></a>Configuration
+
 DDL replication is configured on a per-replication set basis, in terms of
 `pglogical.replication_set`.
 
@@ -209,7 +250,8 @@ There are no stored procedures to insert/update `set_configs`, which we don't
 think would add much value at this point.  There is a check constraint in place
 to ensure the regex is valid.
 
-## Permissions
+## <a name="permissions"></a>Permissions
+
 It is important to consider which role will be allowed to run DDL in a given
 provider.  As it stands, this role will need to exist on the subscriber as well,
 because this same role will be used to try to deploy on the subscriber.
@@ -221,7 +263,8 @@ FROM pg_roles
 WHERE rolname IN('app_owner_role');
 ```
 
-## Deployment of Automatic DDL Replication
+## <a name="deployment"></a>Deployment of Automatic DDL Replication
+
 To **deploy** (meaning activate) DDL replication for a given replication set,
 run:
 ```sql
@@ -289,7 +332,8 @@ ALTER TABLE foo SET (autovacuum_vacuum_threshold = 1000);
 RESET SESSION_REPLICATION_ROLE;
 ```
 
-# Administration and Monitoring
+## <a name="monitoring"></a>Monitoring and Administration
+
 This framework will log all DDL changes that attempt to be propagated.  It is
 also generous in allowing DDL replication procedures to fail in order not to
 prevent application deployments of DDL. An exception will never be allowed to
@@ -308,8 +352,11 @@ addition to server log warnings raised at `WARNING` level in case of issues:
   (see details below) is logged here
 - `exceptions` - Any unexpected exception raise by the event trigger functions are logged here
 
-## Limitations and Restrictions
-1. A single DDL SQL statement which alters tables both replicated and
+# <a name="limitations"></a>Limitations and Restrictions
+
+## <a name="multi_tables"></a>DDL involving multiple tables
+
+A single DDL SQL statement which alters tables both replicated and
 non-replicated cannot be supported.  For example, if I have
 `include_schema_regex` which includes only the regex `'^replicated.*'`, this is
 unsupported:
@@ -319,7 +366,7 @@ DROP TABLE replicated.foo, notreplicated.bar;
 
 Likewise, the following can be problematic if you are using filtered replication:
 ```sql
-ALTER TABLE replicated.foo ADD COLUMN foo_id REFERENCES unreplicated.foo (id);
+ALTER TABLE replicated.foo ADD COLUMN foo_id INT REFERENCES unreplicated.foo (id);
 ```
 
 Depending on your environment, such cases may be very rare, or possibly common.
@@ -328,34 +375,60 @@ replication of just about all tables in your application database.  Also, if you
 are not likely to have relationships between schemas you both are and are not
 replicating, then edge cases will be unlikely.
 
-In any case, what will happen if such a statement gets propagated is that it
-will fail on the subscriber, and you will need to:
-- Manually deploy, if necessary.  In the example above, you might need to
-  manually run:
-```sql
-ALTER TABLE replicated.foo ADD COLUMN foo_id;
-```
-- Consume the change in affected replication slot using
-  `pg_logical_slot_get_changes` up to specific LSN to get replication working
-again.
-- Re-enable replication for affected subscriber(s)
+In this case, the DDL statement could fail on the subscriber.  To resolve this,
+see [Resolving Failed DDL on Subscribers](#resolving_failed).
 
-2. `CREATE TABLE AS` and `SELECT INTO` are not supported to replicate DDL due to
+## <a name="unsupported"></a>Unsupported Commands
+
+`CREATE TABLE AS` and `SELECT INTO` are not supported to replicate DDL due to
 limitations on transactional consistency.  That is, if a table is created from a
 set of data on the provider, to run the same SQL on the subscriber will in no
-way guarantee consistent data.  It is recommended instead that the DDL statement
-creating the table and the DML inserting into the table are separated.  **NOTE**
-that temp tables will not be affected by this, since temp objects are always
-excluded from DDL replication.
+way guarantee consistent data.  For example:
+```sql
+CREATE TABLE foo AS
+SELECT field_1, field_2, now() AS refreshed_at
+FROM table_1;
+```
 
-3. If your DDL statement exceeds the length of `track_activity_query_size`, an
+Not only is it possible that `table_1` doesn't even exist on the subscriber,
+even if it does it may not be fully up to date with the provider, in which case
+the data created in the table on the subscriber would not match.  Worse, is that
+the `now()` function is basically guaranteed to be different on the subscriber.
+
+It is recommended instead that the DDL statement creating the table and
+the DML inserting into the table are separated.  Continuing the above
+example:
+```sql
+CREATE TABLE foo (field_1 INT PRIMARY KEY, field_2 TEXT, refreshed_at TIMESTAMPTZ);
+INSERT INTO foo (field_1, field_2, refreshed_at)
+SELECT field_1, field_2, now() AS refreshed_at
+FROM table_1;
+```
+
+The above is completely supported by this framework, bearing in mind
+some of the edge cases with [multi-statements](#multi_statement).  The
+`CREATE TABLE` will automatically be replicated by this framework, and
+the table will be added to replication since it has a primary key.  Then
+the `INSERT` will be replicated by normal pglogical replication.
+
+**NOTE** that temp tables are not affected by this limitation, since temp objects are
+always excluded from DDL replication anyway.
+
+To resolve these, see [Resolving Unhandled DDL](#resolve_unhandled).
+
+## <a name="activity"></a>`track_activity_query_size` Limitations
+
+If your DDL statement exceeds the length of `track_activity_query_size`, an
 unhandled exception will be logged.  It is recommended to run higher settings
 (10-15k for example) for `track_activity_query_size` to use this framework
 effectively.  For consideration: Postgres should have a project to make the C
 `query_string` available within event triggers.
 
-## Multi-Statement SQL Limitations
-It is important to understand that limitations on multi-statement SQL has
+To resolve these, see [Resolving Unhandled DDL](#resolve_unhandled).
+
+## <a name="multi_statement"></a>Multi-Statement Client SQL Limitations
+
+It is important to understand that limitations on multi-statement client SQL has
 nothing to do with executing multiple SQL statements at once, or in one
 transaction.  Of course, it is assumed that will often or even usually be the
 case, and this framework can handle that just fine.
@@ -393,6 +466,8 @@ In any case that a SQL statement cannot be automatically run on the subscriber
 based on these analyses, instead it will be logged as a `WARNING` and put into
 the `unhandled` table for manual processing.
 
+To resolve these, see [Resolving Unhandled DDL](#resolve_unhandled).
+
 The regression suite in the `sql` folder has examples of several of these cases.
 
 Thus, limitations on multi-statement SQL is largely based on how your client
@@ -409,7 +484,58 @@ The `unhandled` table and `WARNING` logs are designed to be leveraged with
 monitoring to create alerting around when manual intervention is required for
 DDL changes.
 
-## Help Wanted Features
+# <a name="resolve"></a>Resolving DDL Replication Issues
+
+## <a name="resolve_failed"></a>Resolving Failed DDL on Subscribers
+
+In some cases, you may propagate DDL that fails on the subscriber, and
+replication will break.  You will then need to:
+- Manually deploy with the same SQL statement modified so that it excludes the
+  failing portion.  For the example above of both adding a column and adding a
+foreign key, assuming we don't have that `unreplicated` table, then you would
+run:
+```sql
+ALTER TABLE replicated.foo ADD COLUMN foo_id INT;
+```
+- Consume the change in affected replication slot using
+  `pg_logical_slot_get_changes` **up to specific LSN** of the transaction which
+included the DDL statement to get replication working again.
+- Re-enable replication for affected subscriber(s)
+
+## <a name="resolve_unhandled"></a>Resolving Unhandled DDL
+
+At present, an unhandled DDL deployment **may not break replication** by itself.
+If the DDL statement that could not be deployed doesn't actually affect any data
+being replicated (for example, a brand new table is added), then replication
+will continue.  However, the situation should be resolved ASAP because it is
+assumed that whatever table(s) that were involved in the DDL **should** be
+propagated to subscribers.  It is also possible that replication will break
+immediately.  For example, if a column is added to the table, and data is
+replicating, it will fail immediately because of a column mismatch.  In such
+cases you will need to:
+- Manually deploy the unhandled SQL statement modified so that it excludes the
+  unhandled portion.  For the example of a multi-statement SQL above, you would
+need to exclude the `INSERT` portion of the SQL and run:
+```sql
+CREATE TABLE foo (id serial primary key, bla text);
+```
+- If a new table is involved, in this case you also will need to manually add
+  the table to replication using `pglogical.replication_set_add_table`
+- If a new table is involved, you may need to resynchronize the table if data
+  has been replicating for it
+- If a new table is NOT involved (for example `ALTER TABLE ADD COLUMN`), then
+  replication will simply continue where it broke
+- Re-enable replication for affected subscriber(s)
+
+To be more conservative, we may want a feature that forces replication to break
+if there is an unhandled deployment, for example, by sending an exception
+through `replicate_ddl_command`.  But such a feature may cause additional and
+unnecessary administration overhead, since it is likely the strictness of
+replication will cause the system to break when it should. 
+
+# <a name="devs"></a>For Developers
+
+## <a name="help_wanted"></a>Help Wanted Features
 We are currently using the parser only to get the list of command tags.  One
 big advantage to this is that it isn't going to be difficult to maintain as
 Postgres develops.  One disadvantage is that it tells us nothing about the
@@ -427,8 +553,7 @@ the parser to programatically use only what we want and send it to subscribers?
 I think we do, but lots of work would be required, and we would welcome those
 with more comfort in the parser code to help if interested.
 
-# For Developers
-## Regression testing
+## <a name="regression"></a>Regression testing
 You can run the regression suite, which must be on a server that has pglogical
 packages available, and a cluster that is configured to allow creating the
 pglogical extension (i.e. adding it to `shared_preload_libraries`).  Note that
