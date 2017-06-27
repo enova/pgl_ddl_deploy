@@ -241,16 +241,22 @@ There is already a pattern of schemas excluded always that you need not worry
 about. You can view them in this function:
 ```sql
 SELECT pgl_ddl_deploy.exclude_regex();
+```
 
---Check current set_config schemas
+You can use this query to check what your current configs will pull in
+for schemas:
+```sql
 SELECT sc.set_name, n.nspname
 FROM pg_namespace n
 INNER JOIN pgl_ddl_deploy.set_configs sc
   ON nspname !~* pgl_ddl_deploy.exclude_regex()
   AND n.nspname ~* sc.include_schema_regex
 ORDER BY sc.set_name, n.nspname;
+```
 
---Test any regex on current schemas
+You can use this query to test a new regex for what existing schemas it
+matches:
+```sql
 SELECT n.nspname
 FROM pg_namespace n
 WHERE nspname !~* pgl_ddl_deploy.exclude_regex()
