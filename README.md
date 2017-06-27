@@ -134,12 +134,12 @@ SET ROLE app_owner;
 
 --Let's make some data!
 CREATE TABLE foo(id serial primary key);
-ALTER TABLE foo ADD COLUMN bla TEXT;
+ALTER TABLE foo ADD COLUMN bla INT;
 INSERT INTO foo (bla) VALUES (1),(2),(3);
 
 CREATE SCHEMA happy;
 CREATE TABLE happy.foo(id serial primary key);
-ALTER TABLE happy.foo ADD COLUMN bla TEXT;
+ALTER TABLE happy.foo ADD COLUMN bla INT;
 INSERT INTO happy.foo (bla) VALUES (1),(2),(3);
 DELETE FROM happy.foo WHERE bla = 3;
 ```
