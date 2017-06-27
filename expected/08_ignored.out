@@ -1,0 +1,24 @@
+SET ROLE test_pgl_ddl_deploy;
+CREATE TEMP TABLE foo(id SERIAL PRIMARY KEY);
+ALTER TABLE foo ADD COLUMN bla TEXT;
+DROP TABLE foo;
+SELECT 1 AS myfield INTO TEMP foo;
+DROP TABLE foo;
+CREATE TEMP TABLE foo AS
+SELECT 1 AS myfield;
+DROP TABLE foo;
+SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |          ddl_sql_raw           |          ddl_sql_sent          
+----------+--------------------------------+--------------------------------
+ test4    | DROP TABLE foo CASCADE;        | DROP TABLE foo CASCADE;
+ test3    | DROP TABLE foo CASCADE;        | DROP TABLE foo CASCADE;
+ test2    | DROP TABLE foo CASCADE;        | DROP TABLE foo CASCADE;
+ test1    | DROP TABLE foo CASCADE;        | DROP TABLE foo CASCADE;
+ test8    | DROP TABLE foobar.foo CASCADE; | DROP TABLE foobar.foo CASCADE;
+ test7    | DROP TABLE foobar.foo CASCADE; | DROP TABLE foobar.foo CASCADE;
+ test6    | DROP TABLE foobar.foo CASCADE; | DROP TABLE foobar.foo CASCADE;
+ test5    | DROP TABLE foobar.foo CASCADE; | DROP TABLE foobar.foo CASCADE;
+ test4    | DROP TABLE foobar.foo CASCADE; | DROP TABLE foobar.foo CASCADE;
+ test3    | DROP TABLE foobar.foo CASCADE; | DROP TABLE foobar.foo CASCADE;
+(10 rows)
+
