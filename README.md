@@ -213,8 +213,20 @@ DDL replication is configured on a per-replication set basis, in terms of
 `pglogical.replication_set`.
 
 Add rows to `pgl_ddl_deploy.set_configs` in order to configure (but not yet
-deploy) DDL replication for a particular replication set.  The relevant
-settings:
+deploy) DDL replication for a particular replication set.  For example:
+```sql
+INSERT INTO pgl_ddl_deploy.set_configs
+(set_name,
+include_schema_regex,
+lock_safe_deployment,
+allow_multi_statements)
+VALUES ('default',
+  '.*',
+  true,
+  true);
+```
+
+The relevant settings:
 - `set_name`: pglogical replication_set name
 - `include_schema_regex`: a regular expression for which schemas to include in
   DDL replication
