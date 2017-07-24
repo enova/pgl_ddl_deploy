@@ -56,9 +56,15 @@ following concepts:
 In many environments, this may cover most if not all DDL statements that are
 executed in an application environment.  We know this doesn't cover 100% of edge
 cases, but we believe the functionality and robustness is significant enough to
-add great value in many Postgres environments.  We also think it's possible to
-expand this concept by further leveraging the Postgres parser.  There is much
-detail below on what the Limitations and Restrictions are of this framework.
+add great value in many Postgres environments.  It will work especially well in
+these two use cases:
+ - When you want to replicate all user tables
+ - When you want to replicate only a subset of tables in a schema that will not
+   have any foreign key dependencies to other schemas
+
+We also think it's possible to expand this concept by further leveraging the
+Postgres parser.  There is much detail below on what the Limitations and
+Restrictions are of this framework.
 
 **NOTE**: The concept implemented here could be extended with any replication
 framework that can propagate SQL to subscribers, i.e. skytools and Postgres'
@@ -391,7 +397,11 @@ Depending on your environment, such cases may be very rare, or possibly common.
 For example, such edge cases are far less likely when you want to do 1:1
 replication of just about all tables in your application database.  Also, if you
 are not likely to have relationships between schemas you both are and are not
-replicating, then edge cases will be unlikely.
+replicating, then edge cases will be unlikely.  As mentioned above, this
+framework will work best with these two use cases:
+ - When you want to replicate all user tables
+ - When you want to replicate only a subset of tables in a schema that will not
+   have any foreign key dependencies to other schemas
 
 In this case, the DDL statement could fail on the subscriber.  To resolve this,
 see [Resolving Failed DDL on Subscribers](#resolving_failed).
