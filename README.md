@@ -30,6 +30,9 @@ Transparent DDL replication for Postgres 9.5+
 
 # <a name="overview"></a>Overview
 
+Read the Release Summary:
+https://innovation.enova.com/pursuing-postgres-ddl-replication/
+
 ## <a name="high_level"></a>High Level Description
 
 With any current logical replication technology for Postgres, we normally have
