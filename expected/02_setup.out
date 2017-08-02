@@ -28,6 +28,6 @@ SELECT pgl_ddl_deploy.add_role(oid) FROM pg_roles WHERE rolname = 'test_pgl_ddl_
 SET ROLE test_pgl_ddl_deploy;
 CREATE VIEW check_rep_tables AS
 SELECT set_name::TEXT, set_reloid::TEXT AS table_name
-FROM pglogical.replication_set_relation rsr
+FROM pgl_ddl_deploy.rep_set_table_wrapper rsr
 INNER JOIN pglogical.replication_set rs USING (set_id)
 ORDER BY set_name::TEXT, set_reloid::TEXT;
