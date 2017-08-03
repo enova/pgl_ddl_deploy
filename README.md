@@ -195,7 +195,8 @@ data.
 ## <a name="installation"></a>Installation
 
 The functionality of this requires postgres version 9.5+ and a working install
-of pglogical.  Packages will be available soon.  To build from source:
+of pglogical 1.* (working on 2.* compatibility).  Packages will be available
+soon.  To build from source:
 ```
 make
 make install
