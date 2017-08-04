@@ -581,8 +581,8 @@ SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY i
 (10 rows)
 
 SELECT * FROM pgl_ddl_deploy.unhandled;
- id | set_name | pid | executed_at | ddl_sql_raw | command_tag | reason | backend_xmin 
-----+----------+-----+-------------+-------------+-------------+--------+--------------
+ id | set_name | pid | executed_at | ddl_sql_raw | command_tag | reason | txid 
+----+----------+-----+-------------+-------------+-------------+--------+------
 (0 rows)
 
 SELECT * FROM pgl_ddl_deploy.exceptions;

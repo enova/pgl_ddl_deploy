@@ -17,7 +17,6 @@ Transparent DDL replication for Postgres 9.5+
 [Limitations and Restrictions](#limitations)
 - [DDL involving multiple tables](#multi_tables)
 - [Unsupported Commands](#unsupported)
-- [`track_activity_query_size` Limitations](#activity)
 - [Multi-Statement Client SQL Limitations](#multi_statement)
 
 [Resolving DDL Replication Issues](#resolve)
@@ -196,7 +195,8 @@ data.
 ## <a name="installation"></a>Installation
 
 The functionality of this requires postgres version 9.5+ and a working install
-of pglogical.  Packages will be available soon.  To build from source:
+of pglogical 1.* (working on 2.* compatibility).  Packages will be available
+soon.  To build from source:
 ```
 make
 make install
@@ -444,16 +444,6 @@ the `INSERT` will be replicated by normal pglogical replication.
 
 **NOTE** that temp tables are not affected by this limitation, since temp objects are
 always excluded from DDL replication anyway.
-
-To resolve these, see [Resolving Unhandled DDL](#resolve_unhandled).
-
-## <a name="activity"></a>`track_activity_query_size` Limitations
-
-If your DDL statement exceeds the length of `track_activity_query_size`, an
-unhandled exception will be logged.  It is recommended to run higher settings
-(10-15k for example) for `track_activity_query_size` to use this framework
-effectively.  For consideration: Postgres should have a project to make the C
-`query_string` available within event triggers.
 
 To resolve these, see [Resolving Unhandled DDL](#resolve_unhandled).
 

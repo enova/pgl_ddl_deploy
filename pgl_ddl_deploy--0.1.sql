@@ -46,10 +46,10 @@ CREATE TABLE pgl_ddl_deploy.events (
     executed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     ddl_sql_raw TEXT,
     ddl_sql_sent TEXT,
-    backend_xmin BIGINT
+    txid BIGINT
     );
 
-CREATE UNIQUE INDEX ON pgl_ddl_deploy.events (set_name, pid, backend_xmin, md5(ddl_sql_raw));
+CREATE UNIQUE INDEX ON pgl_ddl_deploy.events (set_name, pid, txid, md5(ddl_sql_raw));
 
 CREATE TABLE pgl_ddl_deploy.exceptions (
     id SERIAL PRIMARY KEY,
@@ -68,11 +68,11 @@ CREATE TABLE pgl_ddl_deploy.unhandled (
     ddl_sql_raw TEXT,
     command_tag TEXT,
     reason TEXT,
-    backend_xmin BIGINT,
-    CONSTRAINT valid_reason CHECK (reason IN('mixed_objects','rejected_command_tags','rejected_multi_statement','too_long','unsupported_command'))
+    txid BIGINT,
+    CONSTRAINT valid_reason CHECK (reason IN('mixed_objects','rejected_command_tags','rejected_multi_statement','unsupported_command'))
     );
 
-CREATE UNIQUE INDEX ON pgl_ddl_deploy.unhandled (set_name, pid, backend_xmin, md5(ddl_sql_raw));
+CREATE UNIQUE INDEX ON pgl_ddl_deploy.unhandled (set_name, pid, txid, md5(ddl_sql_raw));
 
 CREATE FUNCTION pgl_ddl_deploy.log_unhandled
 (p_set_name TEXT,
@@ -80,7 +80,7 @@ CREATE FUNCTION pgl_ddl_deploy.log_unhandled
  p_ddl_sql_raw TEXT,
  p_command_tag TEXT,
  p_reason TEXT,
- p_backend_xmin BIGINT)
+ p_txid BIGINT)
 RETURNS VOID AS
 $BODY$
 DECLARE
@@ -93,7 +93,7 @@ INSERT INTO pgl_ddl_deploy.unhandled
    ddl_sql_raw,
    command_tag,
    reason,
-   backend_xmin)
+   txid)
 VALUES
   (p_set_name,
    p_pid,
@@ -101,7 +101,7 @@ VALUES
    p_ddl_sql_raw,
    p_command_tag,
    p_reason,
-   p_backend_xmin);
+   p_txid);
 RAISE WARNING '%', c_unhandled_msg;
 END;
 $BODY$
@@ -119,7 +119,7 @@ CREATE TABLE pgl_ddl_deploy.commands (
     id SERIAL PRIMARY KEY,
     set_name NAME,
     pid INT,
-    backend_xmin BIGINT,
+    txid BIGINT,
     classid Oid,
     objid Oid,
     objsubid integer,
@@ -128,17 +128,6 @@ CREATE TABLE pgl_ddl_deploy.commands (
     schema_name text,
     object_identity text,
     in_extension bool);
-
-CREATE OR REPLACE FUNCTION pgl_ddl_deploy.stat_activity()
-RETURNS TABLE (query TEXT, backend_xmin XID)
-AS
-$BODY$
-SELECT query, backend_xmin
-FROM pg_stat_activity
-WHERE pid = pg_backend_pid();
-$BODY$
-SECURITY DEFINER
-LANGUAGE SQL STABLE;
 
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.lock_safe_executor(p_sql TEXT)
 RETURNS VOID AS $BODY$
@@ -231,8 +220,6 @@ WITH vars AS
    */
   $BUILD$
   c_search_path TEXT = (SELECT current_setting('search_path'));
-  --The actual max number of allowed characters is track_activity_query_size - 1 character
-  c_max_query_length INT = (SELECT current_setting('track_activity_query_size')::INT) - 1;
   c_provider_name TEXT;
    --TODO: How do I decide which replication set we care about?
   v_pid INT = pg_backend_pid();
@@ -246,7 +233,7 @@ WITH vars AS
     1. Transaction begin and commit, which cannot run inside plpgsql
   *****/
   v_ddl_strip_regex TEXT = '(begin\W*transaction\W*|begin\W*work\W*|begin\W*|commit\W*transaction\W*|commit\W*work\W*|commit\W*);';
-  v_backend_xmin BIGINT;
+  v_txid BIGINT;
   v_ddl_length INT;
   v_sql TEXT;
   v_cmd_count INT;
@@ -278,12 +265,8 @@ WITH vars AS
   --If there are any matches to our replication config, get the query
   --This will either be sent, or logged at this point if not deployable
   IF v_match_count > 0 THEN
-    --Fresh snapshot for pg_stat_activity
-        PERFORM pg_stat_clear_snapshot();
-
-        SELECT query, backend_xmin
-        INTO v_ddl_sql_raw, v_backend_xmin
-        FROM pgl_ddl_deploy.stat_activity();
+        v_ddl_sql_raw = current_query();
+        v_txid = txid_current();
   END IF;
   $BUILD$::TEXT AS shared_get_query,
 /****
@@ -293,36 +276,19 @@ WITH vars AS
    */
   $BUILD$
         /****
-          Length must be checked against max length allowed for pg_stat_activity.
-          Bail if length equals max.
-          Strictly speaking, this allows edge cases, but we will tolerate that.
-          */
-        v_ddl_length:=LENGTH(v_ddl_sql_raw);
-        IF v_ddl_length = c_max_query_length THEN
-          PERFORM pgl_ddl_deploy.log_unhandled(
-               c_set_name,
-               v_pid,
-               v_ddl_sql_raw,
-               TG_TAG,
-               'too_long',
-               v_backend_xmin);
-          RETURN;
-        END IF;
-
-        /****
           A multi-statement SQL command may fire this event trigger more than once
           This check ensures the SQL is propagated only once, if at all
          */
         IF EXISTS
            (SELECT 1 FROM pgl_ddl_deploy.events
             WHERE set_name = c_set_name
-              AND backend_xmin = v_backend_xmin
+              AND txid = v_txid
               AND ddl_sql_raw = v_ddl_sql_raw
               AND pid = v_pid)
            OR EXISTS
            (SELECT 1 FROM pgl_ddl_deploy.unhandled
             WHERE set_name = c_set_name
-              AND backend_xmin = v_backend_xmin
+              AND txid = v_txid
               AND ddl_sql_raw = v_ddl_sql_raw
               AND pid = v_pid)
             THEN
@@ -340,7 +306,7 @@ WITH vars AS
                v_ddl_sql_raw,
                TG_TAG,
                'rejected_command_tags',
-               v_backend_xmin);
+               v_txid);
           RETURN;
         /****
           If we are not allowing multi-statements at all, reject
@@ -352,7 +318,7 @@ WITH vars AS
                v_ddl_sql_raw,
                TG_TAG,
                'rejected_multi_statement',
-               v_backend_xmin);
+               v_txid);
           RETURN;
         END IF;
 
@@ -425,14 +391,14 @@ WITH vars AS
          executed_at,
          ddl_sql_raw,
          ddl_sql_sent,
-         backend_xmin)
+         txid)
         VALUES
         (c_set_name,
          v_pid,
          current_timestamp,
          v_ddl_sql_raw,
          v_ddl_sql_sent,
-         v_backend_xmin);
+         v_txid);
   $BUILD$::TEXT AS shared_deploy_logic,
   $BUILD$
   ELSEIF (v_match_count > 0 AND v_cmd_count <> v_match_count) THEN
@@ -442,7 +408,7 @@ WITH vars AS
      v_ddl_sql_raw,
      TG_TAG,
      'mixed_objects',
-     v_backend_xmin);
+     v_txid);
   $BUILD$::TEXT AS shared_mixed_obj_logic,
 
   $BUILD$
@@ -526,7 +492,7 @@ BEGIN
         INSERT INTO pgl_ddl_deploy.commands
             (set_name,
             pid,
-            backend_xmin,
+            txid,
             classid,
             objid,
             objsubid,
@@ -537,7 +503,7 @@ BEGIN
             in_extension)
         SELECT c_set_name,
             v_pid,
-            v_backend_xmin,
+            v_txid,
             classid,
             objid,
             objsubid,
@@ -612,7 +578,7 @@ BEGIN
         INSERT INTO pgl_ddl_deploy.commands
             (set_name,
             pid,
-            backend_xmin,
+            txid,
             classid,
             objid,
             objsubid,
@@ -623,7 +589,7 @@ BEGIN
             in_extension)
         SELECT c_set_name,
             v_pid,
-            v_backend_xmin,
+            v_txid,
             classid,
             objid,
             objsubid,
@@ -658,12 +624,7 @@ BEGIN
   IF v_match_count > 0
     THEN
 
-    --Fresh snapshot for pg_stat_activity
-    PERFORM pg_stat_clear_snapshot();
-
-    SELECT query
-    INTO v_ddl_sql_raw
-    FROM pgl_ddl_deploy.stat_activity();
+    v_ddl_sql_raw = current_query();
     
     PERFORM pgl_ddl_deploy.log_unhandled(
                c_set_name,
@@ -671,7 +632,7 @@ BEGIN
                v_ddl_sql_raw,
                TG_TAG,
                'unsupported_command',
-               v_backend_xmin);
+               v_txid);
   END IF;
 
 $BUILD$||shared_exception_handler||$BUILD$
