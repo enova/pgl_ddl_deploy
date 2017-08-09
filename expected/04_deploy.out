@@ -25,7 +25,7 @@ WARNING:
           AND i.indisprimary)
         AND NOT EXISTS
         (SELECT 1
-        FROM pglogical.replication_set_relation rsr
+        FROM pgl_ddl_deploy.rep_set_table_wrapper rsr
         INNER JOIN pglogical.replication_set r
           ON r.set_id = rsr.set_id
         WHERE r.set_name = 'test1'
@@ -76,7 +76,7 @@ WARNING:
           AND i.indisprimary)
         AND NOT EXISTS
         (SELECT 1
-        FROM pglogical.replication_set_relation rsr
+        FROM pgl_ddl_deploy.rep_set_table_wrapper rsr
         INNER JOIN pglogical.replication_set r
           ON r.set_id = rsr.set_id
         WHERE r.set_name = 'test1'

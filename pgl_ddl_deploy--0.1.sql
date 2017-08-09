@@ -6,6 +6,144 @@ RETURNS TEXT[] AS
 'MODULE_PATHNAME', 'sql_command_tags'
 LANGUAGE C VOLATILE STRICT;
 
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.add_ext_object
+  (p_type text
+  , p_full_obj_name text)
+RETURNS VOID AS
+$BODY$
+BEGIN
+PERFORM pgl_ddl_deploy.toggle_ext_object(p_type, p_full_obj_name, 'ADD');
+END;
+$BODY$
+LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.drop_ext_object
+  (p_type text
+  , p_full_obj_name text)
+RETURNS VOID AS
+$BODY$
+BEGIN
+PERFORM pgl_ddl_deploy.toggle_ext_object(p_type, p_full_obj_name, 'DROP');
+END;
+$BODY$
+LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.toggle_ext_object
+  (p_type text
+  , p_full_obj_name text
+  , p_toggle text)
+RETURNS VOID AS
+$BODY$
+DECLARE
+  c_valid_types TEXT[] = ARRAY['EVENT TRIGGER','FUNCTION','VIEW'];
+  c_valid_toggles TEXT[] = ARRAY['ADD','DROP'];
+BEGIN
+
+IF NOT (SELECT ARRAY[p_type] && c_valid_types) THEN
+  RAISE EXCEPTION 'Must pass one of % as 1st arg.', array_to_string(c_valid_types);
+END IF;
+
+IF NOT (SELECT ARRAY[p_toggle] && c_valid_toggles) THEN
+  RAISE EXCEPTION 'Must pass one of % as 3rd arg.', array_to_string(c_valid_toggles);
+END IF;
+
+EXECUTE 'ALTER EXTENSION pgl_ddl_deploy '||p_toggle||' '||p_type||' '||p_full_obj_name;
+
+EXCEPTION
+  WHEN undefined_function THEN
+    RETURN;
+  WHEN undefined_object THEN
+    RETURN;
+  WHEN object_not_in_prerequisite_state THEN
+    RETURN;
+END;
+$BODY$
+LANGUAGE plpgsql;
+/*** 
+pglogical version-specific handling
+
+This is not sufficient if pglogical is upgraded underneath an installation
+of pgl_ddl_deploy, but at least will support either version at install.
+
+If you indeed were to do that, you will likely start to see WARNING level
+logs indicating a problem.  DDL statements should not fail.
+
+To correct the problem manually, run pgl_ddl_deploy.dependency_update()
+****/
+CREATE FUNCTION pgl_ddl_deploy.dependency_update()
+RETURNS VOID AS
+$DEPS$
+DECLARE
+    v_sql TEXT;
+    v_rep_set_add_table TEXT;
+BEGIN
+
+IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'rep_set_table_wrapper' AND table_schema = 'pgl_ddl_deploy') THEN
+    PERFORM pgl_ddl_deploy.drop_ext_object('VIEW','pgl_ddl_deploy.rep_set_table_wrapper');
+    DROP VIEW pgl_ddl_deploy.rep_set_table_wrapper;
+END IF;
+IF (SELECT extversion FROM pg_extension WHERE extname = 'pglogical') ~* '^1.*' THEN
+
+    CREATE VIEW pgl_ddl_deploy.rep_set_table_wrapper AS
+    SELECT *
+    FROM pglogical.replication_set_relation;
+
+    v_rep_set_add_table = 'pglogical.replication_set_add_table(name, regclass, boolean)';
+
+ELSE
+
+    CREATE VIEW pgl_ddl_deploy.rep_set_table_wrapper AS
+    SELECT *
+    FROM pglogical.replication_set_table;
+
+    v_rep_set_add_table = 'pglogical.replication_set_add_table(name, regclass, boolean, text[], text)';
+
+END IF;
+
+v_sql:=$$
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.add_role(p_roleoid oid)
+RETURNS BOOLEAN AS $BODY$
+/******
+Assuming roles doing DDL are not superusers, this function grants needed privileges
+to run through the pgl_ddl_deploy DDL deployment.
+This needs to be run on BOTH provider and subscriber.
+******/
+DECLARE
+    v_rec RECORD;
+    v_sql TEXT;
+BEGIN
+
+    FOR v_rec IN
+        SELECT quote_ident(rolname) AS rolname FROM pg_roles WHERE oid = p_roleoid
+    LOOP
+
+    v_sql:='
+    GRANT USAGE ON SCHEMA pglogical TO '||v_rec.rolname||';
+    GRANT USAGE ON SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
+    GRANT EXECUTE ON FUNCTION pglogical.replicate_ddl_command(text, text[]) TO '||v_rec.rolname||';
+    GRANT EXECUTE ON FUNCTION $$||v_rep_set_add_table||$$ TO '||v_rec.rolname||';
+    GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.sql_command_tags(text) TO '||v_rec.rolname||';
+    GRANT INSERT, UPDATE, SELECT ON ALL TABLES IN SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
+    GRANT USAGE ON ALL SEQUENCES IN SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
+    GRANT SELECT ON ALL TABLES IN SCHEMA pglogical TO '||v_rec.rolname||';';
+
+    EXECUTE v_sql;
+    RETURN true;
+    END LOOP;
+RETURN false;
+END;
+$BODY$
+LANGUAGE plpgsql;
+$$;
+
+EXECUTE v_sql;
+
+END;
+$DEPS$
+LANGUAGE plpgsql;
+
+SELECT pgl_ddl_deploy.dependency_update();
+
 CREATE FUNCTION pgl_ddl_deploy.exclude_regex()
 RETURNS TEXT AS
 $BODY$
@@ -149,59 +287,6 @@ END;
 $BODY$
 LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION pgl_ddl_deploy.add_ext_object
-  (p_type text -- 'EVENT TRIGGER' OR 'FUNCTION'
-  , p_full_obj_name text)
-RETURNS VOID AS
-$BODY$
-BEGIN
-PERFORM pgl_ddl_deploy.toggle_ext_object(p_type, p_full_obj_name, 'ADD');
-END;
-$BODY$
-LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION pgl_ddl_deploy.drop_ext_object
-  (p_type text -- 'EVENT TRIGGER' OR 'FUNCTION'
-  , p_full_obj_name text)
-RETURNS VOID AS
-$BODY$
-BEGIN
-PERFORM pgl_ddl_deploy.toggle_ext_object(p_type, p_full_obj_name, 'DROP');
-END;
-$BODY$
-LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION pgl_ddl_deploy.toggle_ext_object
-  (p_type text -- 'EVENT TRIGGER' OR 'FUNCTION'
-  , p_full_obj_name text
-  , p_toggle text)
-RETURNS VOID AS
-$BODY$
-DECLARE
-  c_valid_types TEXT[] = ARRAY['EVENT TRIGGER','FUNCTION'];
-  c_valid_toggles TEXT[] = ARRAY['ADD','DROP'];
-BEGIN
-
-IF NOT (SELECT ARRAY[p_type] && c_valid_types) THEN
-  RAISE EXCEPTION 'Must pass one of % as 1st arg.', array_to_string(c_valid_types);
-END IF;
-
-IF NOT (SELECT ARRAY[p_toggle] && c_valid_toggles) THEN
-  RAISE EXCEPTION 'Must pass one of % as 3rd arg.', array_to_string(c_valid_toggles);
-END IF;
-
-EXECUTE 'ALTER EXTENSION pgl_ddl_deploy '||p_toggle||' '||p_type||' '||p_full_obj_name;
-
-EXCEPTION
-  WHEN undefined_function THEN
-    RETURN;
-  WHEN undefined_object THEN
-    RETURN;
-  WHEN object_not_in_prerequisite_state THEN
-    RETURN;
-END;
-$BODY$
-LANGUAGE plpgsql;
 
 CREATE VIEW pgl_ddl_deploy.event_trigger_schema AS
 WITH vars AS
@@ -439,7 +524,7 @@ WITH vars AS
       AND i.indisprimary)
     AND NOT EXISTS
     (SELECT 1
-    FROM pglogical.replication_set_relation rsr
+    FROM pgl_ddl_deploy.rep_set_table_wrapper rsr
     INNER JOIN pglogical.replication_set r
       ON r.set_id = rsr.set_id
     WHERE r.set_name = c_set_name
@@ -762,7 +847,7 @@ FROM pg_namespace n
       AND i.indisprimary)
     AND NOT EXISTS
     (SELECT 1
-    FROM pglogical.replication_set_relation rsr
+    FROM pgl_ddl_deploy.rep_set_table_wrapper rsr
     INNER JOIN pglogical.replication_set r
       ON r.set_id = rsr.set_id
     WHERE r.set_name = p_set_name
@@ -790,7 +875,7 @@ IF v_count > 0 THEN
           AND i.indisprimary)
         AND NOT EXISTS
         (SELECT 1
-        FROM pglogical.replication_set_relation rsr
+        FROM pgl_ddl_deploy.rep_set_table_wrapper rsr
         INNER JOIN pglogical.replication_set r
           ON r.set_id = rsr.set_id
         WHERE r.set_name = '$SQL$||p_set_name||$SQL$'
@@ -870,43 +955,17 @@ END;
 $BODY$
 LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION pgl_ddl_deploy.add_role(p_roleoid oid)
-RETURNS BOOLEAN AS $BODY$
-/******
-Assuming roles doing DDL are not superusers, this function grants needed privileges
-to run through the pgl_ddl_deploy DDL deployment.
-This needs to be run on BOTH provider and subscriber.
-******/
-DECLARE
-    v_rec RECORD;
-    v_sql TEXT;
-BEGIN
-
-    FOR v_rec IN
-        SELECT quote_ident(rolname) AS rolname FROM pg_roles WHERE oid = p_roleoid
-    LOOP
-
-    v_sql:='
-    GRANT USAGE ON SCHEMA pglogical TO '||v_rec.rolname||';
-    GRANT USAGE ON SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
-    GRANT EXECUTE ON FUNCTION pglogical.replicate_ddl_command(text, text[]) TO '||v_rec.rolname||';
-    GRANT EXECUTE ON FUNCTION pglogical.replication_set_add_table(name, regclass, boolean) TO '||v_rec.rolname||';
-    GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.sql_command_tags(text) TO '||v_rec.rolname||';
-    GRANT INSERT, UPDATE, SELECT ON ALL TABLES IN SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
-    GRANT USAGE ON ALL SEQUENCES IN SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
-    GRANT SELECT ON ALL TABLES IN SCHEMA pglogical TO '||v_rec.rolname||';';
-    
-    EXECUTE v_sql;
-    RETURN true; 
-    END LOOP;
-RETURN false;
-END;
-$BODY$
-LANGUAGE plpgsql;
 
 GRANT USAGE ON SCHEMA pgl_ddl_deploy TO PUBLIC;
 GRANT USAGE ON SCHEMA pglogical TO PUBLIC;
 REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA pglogical FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION pglogical.dependency_check_trigger() TO PUBLIC;
-GRANT EXECUTE ON FUNCTION pglogical.truncate_trigger_add() TO PUBLIC;
+DO $$
+BEGIN
+IF EXISTS (SELECT 1 FROM pg_proc p INNER JOIN pg_namespace n ON n.oid = p.pronamespace WHERE proname = 'dependency_check_trigger' AND nspname = 'pglogical') THEN
+    GRANT EXECUTE ON FUNCTION pglogical.dependency_check_trigger() TO PUBLIC;
+END IF;
+IF EXISTS (SELECT 1 FROM pg_proc p INNER JOIN pg_namespace n ON n.oid = p.pronamespace WHERE proname = 'truncate_trigger_add' AND nspname = 'pglogical') THEN
+    GRANT EXECUTE ON FUNCTION pglogical.truncate_trigger_add() TO PUBLIC;
+END IF;
+END$$;
 REVOKE EXECUTE ON FUNCTION pgl_ddl_deploy.sql_command_tags(text) FROM PUBLIC;

@@ -195,8 +195,7 @@ data.
 ## <a name="installation"></a>Installation
 
 The functionality of this requires postgres version 9.5+ and a working install
-of pglogical 1.* (working on 2.* compatibility).  Packages will be available
-soon.  To build from source:
+of pglogical.  Packages will be available soon.  To build from source:
 ```
 make
 make install
@@ -213,6 +212,14 @@ CREATE EXTENSION pgl_ddl_deploy;
 ```
 
 **This extension needs to be installed on provider and all subscribers.**
+
+**NOTE**: If you upgrade pglogical from version 1.* to 2.* while pgl_ddl_deploy
+is installed, you will need to re-run function
+`pgl_ddl_deploy.dependency_update()` to update pglogical-specific dependencies.
+If you indeed were to upgrade and do nothing, you will likely start to see
+`WARNING` level logs indicating a problem.  DDL statements should not fail
+because of the way we are allowing exceptions in this deployment framework to
+proceed with only a `WARNING` level log.
 
 # <a name="setup"></a>Setup and Deployment 
 
