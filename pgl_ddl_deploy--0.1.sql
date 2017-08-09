@@ -7,7 +7,7 @@ RETURNS TEXT[] AS
 LANGUAGE C VOLATILE STRICT;
 
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.add_ext_object
-  (p_type text -- 'EVENT TRIGGER' OR 'FUNCTION'
+  (p_type text
   , p_full_obj_name text)
 RETURNS VOID AS
 $BODY$
