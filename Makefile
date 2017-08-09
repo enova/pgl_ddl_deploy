@@ -1,5 +1,5 @@
 EXTENSION = pgl_ddl_deploy
-DATA = pgl_ddl_deploy--0.1.sql
+DATA = pgl_ddl_deploy--1.0.sql
 MODULES = pgl_ddl_deploy 
 
 REGRESS := 01_create_ext 02_setup 03_add_configs 04_deploy \
