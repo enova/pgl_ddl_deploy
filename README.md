@@ -127,8 +127,39 @@ Subscribers (run on both `default` and `insert_update` subscribers):
 ```sql
 CREATE EXTENSION pgl_ddl_deploy;
 
---Setup permissions (see below for why we need this role on subscriber also)
+--Setup permissions for the same role on subscriber to have DDL permissions 
+CREATE ROLE app_owner WITH NOLOGIN;
 SELECT pgl_ddl_deploy.add_role(oid) FROM pg_roles WHERE rolname = 'app_owner';
+
+--Be sure that on the subscriber, app_owner role has the following perms:
+GRANT CREATE ON DATABASE :DBNAME TO app_owner;
+
+--If schemas already exist on subscriber that you want the app_owner
+--role to be able to modify with any DDL, then you must do this: 
+ALTER TABLE foo OWNER TO app_owner; --...etc
+```
+
+Here is a way to fix the subscriber table owner based on the tables already in
+replication on provider for the same replication set and ddl configuration you
+just setup on provider (shell command):
+```sh
+PGSERVICE=provider_cluster psql provider_db << EOM | PGSERVICE=subscriber_cluster psql subscriber_db
+COPY
+(
+SELECT 'ALTER TABLE '||quote_ident(n.nspname)||'.'||quote_ident(c.relname)||' OWNER TO app_owner;'
+FROM pglogical.replication_set rs
+INNER JOIN pgl_ddl_deploy.set_configs sc
+  ON sc.set_name = rs.set_name
+INNER JOIN pgl_ddl_deploy.rep_set_table_wrapper rsr
+  ON rsr.set_id = rs.set_id
+INNER JOIN pg_class c ON c.oid = rsr.set_reloid
+INNER JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE rs.set_name = 'insert_update'
+  AND n.nspname ~* sc.include_schema_regex
+  AND n.nspname !~* pgl_ddl_deploy.exclude_regex()
+)
+TO STDOUT;
+EOM
 ```
 
 Provider:
