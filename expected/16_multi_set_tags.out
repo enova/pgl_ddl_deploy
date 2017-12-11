@@ -1,17 +1,44 @@
 SET client_min_messages = warning;
-
 SET ROLE test_pgl_ddl_deploy;
-
 CREATE SCHEMA viewer;
-
 --Should be handled by separate set_config
 CREATE TABLE viewer.foo(id int primary key);
-
 --Should be handled by separate set_config
 CREATE VIEW viewer.vw_foo AS
 SELECT * FROM viewer.foo;
-
-SELECT c.create_tags, c.set_name, ddl_sql_raw, ddl_sql_sent
+SELECT c.id, c.create_tags, c.set_name, ddl_sql_raw, ddl_sql_sent
 FROM pgl_ddl_deploy.events e
 INNER JOIN pgl_ddl_deploy.set_configs c ON c.id = e.set_config_id
-ORDER BY id DESC LIMIT 10;
+WHERE c.set_name = 'test1'
+ORDER BY e.id DESC LIMIT 4;
+ id |                                                 create_tags                                                  | set_name |                 ddl_sql_raw                  |                 ddl_sql_sent                 
+----+--------------------------------------------------------------------------------------------------------------+----------+----------------------------------------------+----------------------------------------------
+ 11 | {"CREATE VIEW","ALTER VIEW","CREATE FUNCTION","ALTER FUNCTION"}                                              | test1    | CREATE VIEW viewer.vw_foo AS                +| CREATE VIEW viewer.vw_foo AS                +
+    |                                                                                                              |          | SELECT * FROM viewer.foo;                    | SELECT * FROM viewer.foo;
+  1 | {"ALTER TABLE","CREATE SEQUENCE","ALTER SEQUENCE","CREATE SCHEMA","CREATE TABLE","CREATE TYPE","ALTER TYPE"} | test1    | CREATE TABLE viewer.foo(id int primary key); | CREATE TABLE viewer.foo(id int primary key);
+  1 | {"ALTER TABLE","CREATE SEQUENCE","ALTER SEQUENCE","CREATE SCHEMA","CREATE TABLE","CREATE TYPE","ALTER TYPE"} | test1    | CREATE SCHEMA viewer;                        | CREATE SCHEMA viewer;
+  1 | {"ALTER TABLE","CREATE SEQUENCE","ALTER SEQUENCE","CREATE SCHEMA","CREATE TABLE","CREATE TYPE","ALTER TYPE"} | test1    | DROP VIEW IF EXISTS check_rep_tables;        | DROP VIEW IF EXISTS check_rep_tables;
+(4 rows)
+
+DROP VIEW viewer.vw_foo;
+DROP TABLE viewer.foo CASCADE;
+DROP SCHEMA viewer;
+SELECT c.id, c.drop_tags, c.set_name, ddl_sql_raw, ddl_sql_sent
+FROM pgl_ddl_deploy.events e
+INNER JOIN pgl_ddl_deploy.set_configs c ON c.id = e.set_config_id
+WHERE c.set_name = 'test1'
+ORDER BY e.id DESC LIMIT 4;
+ id |                        drop_tags                         | set_name |          ddl_sql_raw           |          ddl_sql_sent          
+----+----------------------------------------------------------+----------+--------------------------------+--------------------------------
+  1 | {"DROP SCHEMA","DROP TABLE","DROP TYPE","DROP SEQUENCE"} | test1    | DROP SCHEMA viewer;            | DROP SCHEMA viewer;
+  1 | {"DROP SCHEMA","DROP TABLE","DROP TYPE","DROP SEQUENCE"} | test1    | DROP TABLE viewer.foo CASCADE; | DROP TABLE viewer.foo CASCADE;
+ 11 | {"DROP VIEW","DROP FUNCTION"}                            | test1    | DROP VIEW viewer.vw_foo;       | DROP VIEW viewer.vw_foo;
+ 11 | {"DROP VIEW","DROP FUNCTION"}                            | test1    | CREATE VIEW viewer.vw_foo AS  +| CREATE VIEW viewer.vw_foo AS  +
+    |                                                          |          | SELECT * FROM viewer.foo;      | SELECT * FROM viewer.foo;
+(4 rows)
+
+SELECT * FROM pgl_ddl_deploy.exceptions;
+ id | set_name | pid | executed_at | ddl_sql | err_msg | err_state | set_config_id | resolved | resolved_notes 
+----+----------+-----+-------------+---------+---------+-----------+---------------+----------+----------------
+(0 rows)
+

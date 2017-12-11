@@ -8,12 +8,12 @@ CREATE TABLE foo(id serial primary key);
 RESET ROLE;
 SELECT pgl_ddl_deploy.deploy('test1');
 WARNING:  
-  Deployment of auto-replication for set test1 failed
+  Deployment of auto-replication for id 1 set_name test1 failed
   because 1 tables are already queued to be added to replication
   based on your configuration.  These tables need to be added to
   replication manually and synced, otherwise change your configuration.
   Debug query: 
-    SELECT n.nspname, c.relname 
+    SELECT n.nspname, c.relname
     FROM pg_namespace n
       INNER JOIN pg_class c ON n.oid = c.relnamespace
         AND c.relpersistence = 'p'
@@ -59,12 +59,12 @@ CREATE TABLE foo(id serial primary key);
 RESET ROLE;
 SELECT pgl_ddl_deploy.enable('test1');
 WARNING:  
-  Deployment of auto-replication for set test1 failed
+  Deployment of auto-replication for id 1 set_name test1 failed
   because 1 tables are already queued to be added to replication
   based on your configuration.  These tables need to be added to
   replication manually and synced, otherwise change your configuration.
   Debug query: 
-    SELECT n.nspname, c.relname 
+    SELECT n.nspname, c.relname
     FROM pg_namespace n
       INNER JOIN pg_class c ON n.oid = c.relnamespace
         AND c.relpersistence = 'p'

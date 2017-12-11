@@ -12,6 +12,10 @@ DROP EXTENSION pgl_ddl_deploy CASCADE;
 CREATE EXTENSION pgl_ddl_deploy;
 
 SET SESSION_REPLICATION_ROLE TO REPLICA; --To ensure testing subscriber behavior
+CREATE ROLE test_pgl_ddl_deploy;
+GRANT CREATE ON DATABASE contrib_regression TO test_pgl_ddl_deploy;
+SELECT pgl_ddl_deploy.add_role(oid) FROM pg_roles WHERE rolname = 'test_pgl_ddl_deploy';
+
 SET ROLE test_pgl_ddl_deploy;
 
 --Mock subscriber_log insert which should take place on subscriber error when option enabled
@@ -32,15 +36,13 @@ VALUES
    100,
    'awesome',
    1,
-   current_role,
+   'test_pgl_ddl_deploy',
    pg_backend_pid(),
    current_timestamp,
    'CREATE VIEW joy AS SELECT * FROM joyous',
    'SET ROLE test_pgl_ddl_deploy; CREATE VIEW joy AS SELECT * FROM joyous;',
    FALSE,
    'relation "joyous" does not exist');
-
-RESET ROLE;
 
 SELECT pgl_ddl_deploy.retry_all_subscriber_logs();
 
@@ -50,13 +52,14 @@ INNER JOIN pgl_ddl_deploy.subscriber_logs rqo ON rqo.id = rq.origin_subscriber_l
 WHERE NOT rq.succeeded AND rq.next_subscriber_log_id IS NULL AND NOT rq.retrying
 ORDER BY rqo.executed_at ASC, rqo.origin_subscriber_log_id ASC;
 
-SELECT set_name,
+SELECT id,
+   set_name,
    provider_pid,
    provider_node_name,
    provider_set_config_id,
    executed_as_role,
-   subscriber_pid,
-   executed_at,
+   origin_subscriber_log_id,
+   next_subscriber_log_id, 
    ddl_sql,
    full_ddl_sql,
    succeeded,
@@ -68,13 +71,14 @@ CREATE TABLE joyous (id int);
 SELECT pgl_ddl_deploy.retry_all_subscriber_logs();
 SELECT pgl_ddl_deploy.retry_all_subscriber_logs();
 
-SELECT set_name,
+SELECT id,
+   set_name,
    provider_pid,
    provider_node_name,
    provider_set_config_id,
    executed_as_role,
-   subscriber_pid,
-   executed_at,
+   origin_subscriber_log_id,
+   next_subscriber_log_id, 
    ddl_sql,
    full_ddl_sql,
    succeeded,
@@ -99,7 +103,7 @@ VALUES
    101,
    'awesome',
    1,
-   current_role,
+   'test_pgl_ddl_deploy',
    pg_backend_pid(),
    current_timestamp,
    'CREATE VIEW happy AS SELECT * FROM happier;',
@@ -124,7 +128,7 @@ VALUES
    102,
    'awesome',
    1,
-   current_role,
+   'test_pgl_ddl_deploy',
    pg_backend_pid(),
    current_timestamp,
    'CREATE VIEW glee AS SELECT * FROM gleeful;',
@@ -132,16 +136,24 @@ VALUES
    FALSE,
    'relation "gleeful" does not exist');
 
---Both fail
+--The first fails and the second therefore is not attempted
 SELECT pgl_ddl_deploy.retry_all_subscriber_logs();
 
-SELECT set_name,
+--Both fail if we try each separately
+SELECT pgl_ddl_deploy.retry_subscriber_log(rq.id)
+FROM pgl_ddl_deploy.subscriber_logs rq
+INNER JOIN pgl_ddl_deploy.subscriber_logs rqo ON rqo.id = rq.origin_subscriber_log_id
+WHERE NOT rq.succeeded AND rq.next_subscriber_log_id IS NULL AND NOT rq.retrying
+ORDER BY rqo.executed_at ASC, rqo.origin_subscriber_log_id ASC;
+
+SELECT id,
+   set_name,
    provider_pid,
    provider_node_name,
    provider_set_config_id,
    executed_as_role,
-   subscriber_pid,
-   executed_at,
+   origin_subscriber_log_id,
+   next_subscriber_log_id, 
    ddl_sql,
    full_ddl_sql,
    succeeded,
@@ -155,13 +167,14 @@ SELECT pgl_ddl_deploy.retry_all_subscriber_logs();
 --One fails
 SELECT pgl_ddl_deploy.retry_all_subscriber_logs();
 
-SELECT set_name,
+SELECT id,
+   set_name,
    provider_pid,
    provider_node_name,
    provider_set_config_id,
    executed_as_role,
-   subscriber_pid,
-   executed_at,
+   origin_subscriber_log_id,
+   next_subscriber_log_id, 
    ddl_sql,
    full_ddl_sql,
    succeeded,
@@ -185,16 +198,20 @@ ORDER BY rqo.executed_at ASC, rqo.origin_subscriber_log_id ASC;
 
 SELECT pgl_ddl_deploy.retry_all_subscriber_logs();
 
-SELECT set_name,
+SELECT id,
+   set_name,
    provider_pid,
    provider_node_name,
    provider_set_config_id,
    executed_as_role,
-   subscriber_pid,
-   executed_at,
+   origin_subscriber_log_id,
+   next_subscriber_log_id,
    ddl_sql,
    full_ddl_sql,
    succeeded,
    error_message
 FROM pgl_ddl_deploy.subscriber_logs ORDER BY id;
 
+DROP TABLE joyous CASCADE;
+DROP TABLE happier CASCADE;
+DROP TABLE gleeful CASCADE;

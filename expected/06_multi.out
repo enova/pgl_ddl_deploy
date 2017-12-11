@@ -177,7 +177,7 @@ SELECT set_name, ddl_sql_raw, command_tag, reason FROM pgl_ddl_deploy.unhandled 
 (10 rows)
 
 SELECT * FROM pgl_ddl_deploy.exceptions;
- id | set_name | pid | executed_at | ddl_sql | err_msg | err_state 
-----+----------+-----+-------------+---------+---------+-----------
+ id | set_name | pid | executed_at | ddl_sql | err_msg | err_state | set_config_id | resolved | resolved_notes 
+----+----------+-----+-------------+---------+---------+-----------+---------------+----------+----------------
 (0 rows)
 

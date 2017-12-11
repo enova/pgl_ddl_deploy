@@ -293,8 +293,8 @@ The relevant settings:
 and edge cases.  If false, only a single SQL statement (technically speaking - a
 SQL statement with a single node `parsetree`) will be eligible for propagation.
 - `include_only_repset_tables`: if true, only tables that are in replication will
-  be maintained by DDL replication.  Thus only `ALTER TABLE` and `DROP TABLE`
-  statements really apply here.  This option is incompatible with
+  be maintained by DDL replication.  Thus only `ALTER TABLE`
+  statements are permitted here.  This option is incompatible with
   `include_schema_regex`
 - `queue_subscriber_failures`: if true, DDL will be allowed to fail on subscriber
   without breaking replication, and queued for retry using function
@@ -659,6 +659,10 @@ Theoretically speaking, don't we have all that we need in the SQL statement +
 the parser to programatically use only what we want and send it to subscribers?
 I think we do, but lots of work would be required, and we would welcome those
 with more comfort in the parser code to help if interested.
+
+## <a name="sql files"></a>SQL files
+To build the higher version SQL files (i.e. 1.1) from the lower versions +
+the upgrade patch SQL files, run `pgl_ddl_deploy-sql-maker.sh`.
 
 ## <a name="regression"></a>Regression testing
 You can run the regression suite, which must be on a server that has pglogical

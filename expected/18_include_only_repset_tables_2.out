@@ -1,0 +1,47 @@
+SET client_min_messages = warning;
+SELECT pglogical.replication_set_add_table(
+  set_name:='my_special_tables_1'
+  ,relation:='special.foo'::REGCLASS);
+ replication_set_add_table 
+---------------------------
+ t
+(1 row)
+
+SELECT pglogical.replication_set_add_table(
+  set_name:='my_special_tables_2'
+  ,relation:='special.bar'::REGCLASS);
+ replication_set_add_table 
+---------------------------
+ t
+(1 row)
+
+--Deploy by set_name
+SELECT pgl_ddl_deploy.deploy('my_special_tables_1');
+ deploy 
+--------
+ t
+(1 row)
+
+SELECT pgl_ddl_deploy.deploy('my_special_tables_2');
+ deploy 
+--------
+ t
+(1 row)
+
+--Deploy by id
+SELECT pgl_ddl_deploy.deploy(id)
+FROM pgl_ddl_deploy.set_configs
+WHERE set_name = 'my_special_tables_1';
+ deploy 
+--------
+ t
+(1 row)
+
+SELECT pgl_ddl_deploy.deploy(id)
+FROM pgl_ddl_deploy.set_configs
+WHERE set_name = 'my_special_tables_2';
+ deploy 
+--------
+ t
+(1 row)
+

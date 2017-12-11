@@ -1,25 +1,24 @@
 SET client_min_messages = warning;
-
 --This should fail due to overlapping tags
 INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex, lock_safe_deployment, allow_multi_statements, include_only_repset_tables, create_tags, drop_tags)
-SELECT 'test1', NULL, TRUE, TRUE, TRUE, '{"CREATE VIEW","ALTER VIEW","CREATE FUNCTION","ALTER FUNCTION"}', '{"DROP VIEW","DROP FUNCTION"}';
-
+SELECT 'test1', '.*', TRUE, TRUE, FALSE, '{"CREATE VIEW","ALTER VIEW","CREATE FUNCTION","ALTER FUNCTION"}', '{"DROP VIEW","DROP FUNCTION"}';
+ERROR:  Another set_config already exists for 'test1' with overlapping create_tags or drop_tags.
+    Command tags must only appear once per set_name even if using multiple set_configs.
+    
+CONTEXT:  PL/pgSQL function pgl_ddl_deploy.unique_tags() line 10 at RAISE
 --But if we drop these tags from test1, it should work
 UPDATE pgl_ddl_deploy.set_configs
 SET create_tags = '{ALTER TABLE,CREATE SEQUENCE,ALTER SEQUENCE,CREATE SCHEMA,CREATE TABLE,CREATE TYPE,ALTER TYPE}',
   drop_tags = '{DROP SCHEMA,DROP TABLE,DROP TYPE,DROP SEQUENCE}'
 WHERE set_name = 'test1';
-
 --Now this set will only handle these tags
 INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex, lock_safe_deployment, allow_multi_statements, include_only_repset_tables, create_tags, drop_tags)
-SELECT 'test1', NULL, TRUE, TRUE, TRUE, '{"CREATE VIEW","ALTER VIEW","CREATE FUNCTION","ALTER FUNCTION"}', '{"DROP VIEW","DROP FUNCTION"}';
-
+SELECT 'test1', '.*', TRUE, TRUE, FALSE, '{"CREATE VIEW","ALTER VIEW","CREATE FUNCTION","ALTER FUNCTION"}', '{"DROP VIEW","DROP FUNCTION"}';
 --include_only_repset_tables
 WITH new_sets (set_name) AS (
   VALUES ('my_special_tables_1'::TEXT),
     ('my_special_tables_2'::TEXT)
 )
-
 SELECT pglogical.create_replication_set
 (set_name:=s.set_name
 ,replicate_insert:=TRUE
@@ -32,30 +31,41 @@ WHERE NOT EXISTS (
 SELECT 1
 FROM pglogical.replication_set
 WHERE set_name = s.set_name);
-
 DROP TABLE repsets;
-
---Only ALTER TABLE makes sense with include_only_repset_tables
+--Only ALTER TABLE makes sense (and is allowed) with include_only_repset_tables.  So this should fail
 INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex, lock_safe_deployment, allow_multi_statements, include_only_repset_tables, create_tags)
 SELECT 'my_special_tables_1', NULL, TRUE, TRUE, TRUE, '{"CREATE TABLE"}';
-
+ERROR:  new row for relation "set_configs" violates check constraint "repset_tables_only_alter_table"
+DETAIL:  Failing row contains (my_special_tables_1, null, t, t, 12, t, {"CREATE TABLE"}, {"DROP SCHEMA","DROP TABLE","DROP FUNCTION","DROP TYPE","DROP VI..., {INSERT,UPDATE,DELETE,TRUNCATE,SELECT,ROLLBACK,"CREATE EXTENSION..., f).
 --This is OK
 INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex, lock_safe_deployment, allow_multi_statements, include_only_repset_tables, create_tags, drop_tags)
 SELECT 'temp_1', NULL, TRUE, TRUE, TRUE, '{"ALTER TABLE"}', NULL;
-
 DELETE FROM pgl_ddl_deploy.set_configs WHERE set_name = 'temp_1';
-
+--This also should fail - no DROP tags at all allowed
 INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex, lock_safe_deployment, allow_multi_statements, include_only_repset_tables, create_tags, drop_tags)
 SELECT 'my_special_tables_1', NULL, TRUE, TRUE, TRUE, '{"ALTER TABLE"}', '{"DROP TABLE"}';
-
+ERROR:  new row for relation "set_configs" violates check constraint "repset_tables_only_alter_table"
+DETAIL:  Failing row contains (my_special_tables_1, null, t, t, 14, t, {"ALTER TABLE"}, {"DROP TABLE"}, {INSERT,UPDATE,DELETE,TRUNCATE,SELECT,ROLLBACK,"CREATE EXTENSION..., f).
+--These both are OK
 INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex, lock_safe_deployment, allow_multi_statements, include_only_repset_tables, create_tags, drop_tags)
-SELECT 'my_special_tables_2', NULL, TRUE, TRUE, TRUE, '{"ALTER TABLE"}', '{"DROP TABLE"}';
-
+SELECT 'my_special_tables_1', NULL, TRUE, TRUE, TRUE, '{"ALTER TABLE"}', NULL;
+INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex, lock_safe_deployment, allow_multi_statements, include_only_repset_tables, create_tags, drop_tags)
+SELECT 'my_special_tables_2', NULL, TRUE, TRUE, TRUE, '{"ALTER TABLE"}', NULL; 
 --Now deploy again separately
 --By set_name:
 SELECT pgl_ddl_deploy.deploy('test1');
+ deploy 
+--------
+ t
+(1 row)
 
 --By set_config_id
 SELECT pgl_ddl_deploy.deploy(id)
 FROM pgl_ddl_deploy.set_configs
 WHERE set_name = 'test1';
+ deploy 
+--------
+ t
+ t
+(2 rows)
+
