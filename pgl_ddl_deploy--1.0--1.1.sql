@@ -490,11 +490,16 @@ ALTER TABLE pgl_ddl_deploy.exceptions ADD COLUMN resolved_notes TEXT NULL;
 CREATE FUNCTION pgl_ddl_deploy.resolve_unhandled(p_unhandled_id INT, p_notes TEXT = NULL)
 RETURNS BOOLEAN AS
 $BODY$
+DECLARE
+  v_row_count INT;
 BEGIN
   UPDATE pgl_ddl_deploy.unhandled
   SET resolved = TRUE,
     resolved_notes = p_notes
   WHERE id = p_unhandled_id;
+
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  RETURN (v_row_count > 0);
 END;
 $BODY$
 LANGUAGE plpgsql;
@@ -502,11 +507,16 @@ LANGUAGE plpgsql;
 CREATE FUNCTION pgl_ddl_deploy.resolve_exception(p_exception_id INT, p_notes TEXT = NULL)
 RETURNS BOOLEAN AS
 $BODY$
+DECLARE
+  v_row_count INT;
 BEGIN
   UPDATE pgl_ddl_deploy.exceptions
   SET resolved = TRUE,
     resolved_notes = p_notes
   WHERE id = p_exception_id;
+
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  RETURN (v_row_count > 0);
 END;
 $BODY$
 LANGUAGE plpgsql;

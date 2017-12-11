@@ -176,6 +176,73 @@ SELECT set_name, ddl_sql_raw, command_tag, reason FROM pgl_ddl_deploy.unhandled 
  test2    | CREATE TABLE foo(id int primary key); DROP TABLE foo CASCADE;               | CREATE TABLE | rejected_multi_statement
 (10 rows)
 
+--Resolutions
+SELECT pgl_ddl_deploy.resolve_unhandled(id, 'DBA superhero deployed it manually on the subscribers!')
+FROM pgl_ddl_deploy.unhandled;
+ resolve_unhandled 
+-------------------
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+(28 rows)
+
+--Test with no rows and a dummy row
+SELECT pgl_ddl_deploy.resolve_exception(id, 'Mystery solved')
+FROM pgl_ddl_deploy.exceptions;
+ resolve_exception 
+-------------------
+(0 rows)
+
+BEGIN;
+INSERT INTO pgl_ddl_deploy.exceptions (set_name) VALUES ('test1');
+SELECT pgl_ddl_deploy.resolve_exception(id, 'Mystery solved')
+FROM pgl_ddl_deploy.exceptions;
+ resolve_exception 
+-------------------
+ t
+(1 row)
+
+ROLLBACK;
+SELECT resolved, resolved_notes, set_name, ddl_sql_raw, command_tag, reason FROM pgl_ddl_deploy.unhandled ORDER BY id DESC LIMIT 10;
+ resolved |                     resolved_notes                     | set_name |                                 ddl_sql_raw                                 | command_tag  |          reason          
+----------+--------------------------------------------------------+----------+-----------------------------------------------------------------------------+--------------+--------------------------
+ t        | DBA superhero deployed it manually on the subscribers! | test8    | DROP TABLE foo, foobar.foo CASCADE;                                         | DROP TABLE   | mixed_objects
+ t        | DBA superhero deployed it manually on the subscribers! | test7    | DROP TABLE foo, foobar.foo CASCADE;                                         | DROP TABLE   | mixed_objects
+ t        | DBA superhero deployed it manually on the subscribers! | test6    | DROP TABLE foo, foobar.foo CASCADE;                                         | DROP TABLE   | mixed_objects
+ t        | DBA superhero deployed it manually on the subscribers! | test5    | DROP TABLE foo, foobar.foo CASCADE;                                         | DROP TABLE   | mixed_objects
+ t        | DBA superhero deployed it manually on the subscribers! | test8    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE | rejected_multi_statement
+ t        | DBA superhero deployed it manually on the subscribers! | test6    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE | rejected_multi_statement
+ t        | DBA superhero deployed it manually on the subscribers! | test4    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE | rejected_multi_statement
+ t        | DBA superhero deployed it manually on the subscribers! | test2    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE | rejected_multi_statement
+ t        | DBA superhero deployed it manually on the subscribers! | test4    | CREATE TABLE foo(id int primary key); DROP TABLE foo CASCADE;               | CREATE TABLE | rejected_multi_statement
+ t        | DBA superhero deployed it manually on the subscribers! | test2    | CREATE TABLE foo(id int primary key); DROP TABLE foo CASCADE;               | CREATE TABLE | rejected_multi_statement
+(10 rows)
+
 SELECT * FROM pgl_ddl_deploy.exceptions;
  id | set_name | pid | executed_at | ddl_sql | err_msg | err_state | set_config_id | resolved | resolved_notes 
 ----+----------+-----+-------------+---------+---------+-----------+---------------+----------+----------------
