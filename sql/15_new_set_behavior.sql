@@ -1,5 +1,5 @@
 SET client_min_messages = warning;
-
+\set VERBOSITY terse
 --This should fail due to overlapping tags
 INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex, lock_safe_deployment, allow_multi_statements, include_only_repset_tables, create_tags, drop_tags)
 SELECT 'test1', '.*', TRUE, TRUE, FALSE, '{"CREATE VIEW","ALTER VIEW","CREATE FUNCTION","ALTER FUNCTION"}', '{"DROP VIEW","DROP FUNCTION"}';
