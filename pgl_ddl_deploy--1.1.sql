@@ -1114,6 +1114,9 @@ END LOOP;
 END
 $BUILD$;
 
+--If you don't do this, it will be part of the extension!
+DROP TABLE tmp_objs;
+
 CREATE FUNCTION pgl_ddl_deploy.standard_create_tags()
 RETURNS TEXT[] AS
 $BODY$

@@ -676,4 +676,8 @@ As with any Postgres extension:
 ```
 make install
 make installcheck
+
+# There is support for testing both 1.1 and the upgraded path from 1.0 to 1.1
+FROMVERSION=1.0 make installcheck   # Test from 1.0 upgrade to 1.1
+FROMVERSION=1.1 make installcheck
 ```
