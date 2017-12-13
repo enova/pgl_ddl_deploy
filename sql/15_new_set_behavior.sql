@@ -56,6 +56,21 @@ SELECT 'my_special_tables_1', NULL, TRUE, TRUE, TRUE, '{"ALTER TABLE"}', NULL;
 INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex, lock_safe_deployment, allow_multi_statements, include_only_repset_tables, create_tags, drop_tags)
 SELECT 'my_special_tables_2', NULL, TRUE, TRUE, TRUE, '{"ALTER TABLE"}', NULL; 
 
+--Check we get the defaults we want from the trigger
+BEGIN;
+INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex)
+VALUES ('temp_1', '.*');
+
+SELECT create_tags, drop_tags FROM pgl_ddl_deploy.set_configs WHERE set_name = 'temp_1';
+ROLLBACK;
+
+BEGIN;
+INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_only_repset_tables)
+VALUES ('temp_1', TRUE);
+
+SELECT create_tags, drop_tags FROM pgl_ddl_deploy.set_configs WHERE set_name = 'temp_1';
+ROLLBACK;
+
 --Now deploy again separately
 --By set_name:
 SELECT pgl_ddl_deploy.deploy('test1');

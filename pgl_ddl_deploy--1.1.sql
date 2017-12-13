@@ -1227,8 +1227,11 @@ ALTER TABLE pgl_ddl_deploy.set_configs ADD COLUMN include_only_repset_tables BOO
 ALTER TABLE pgl_ddl_deploy.set_configs ADD CONSTRAINT repset_tables_or_regex_inclusion CHECK ((include_schema_regex IS NOT NULL AND NOT include_only_repset_tables) OR (include_only_repset_tables AND include_schema_regex IS NULL));
 
 --Customize command tags
-ALTER TABLE pgl_ddl_deploy.set_configs ADD COLUMN create_tags TEXT[] DEFAULT pgl_ddl_deploy.standard_create_tags();
-ALTER TABLE pgl_ddl_deploy.set_configs ADD COLUMN drop_tags TEXT[] DEFAULT pgl_ddl_deploy.standard_drop_tags();
+ALTER TABLE pgl_ddl_deploy.set_configs ADD COLUMN create_tags TEXT[];
+ALTER TABLE pgl_ddl_deploy.set_configs ADD COLUMN drop_tags TEXT[];
+UPDATE pgl_ddl_deploy.set_configs
+SET create_tags = pgl_ddl_deploy.standard_create_tags(),
+    drop_tags = pgl_ddl_deploy.standard_drop_tags();
 ALTER TABLE pgl_ddl_deploy.set_configs ADD COLUMN blacklisted_tags TEXT[] DEFAULT pgl_ddl_deploy.blacklisted_tags();
 
 --Allow failures
@@ -1258,6 +1261,25 @@ LANGUAGE plpgsql;
 CREATE TRIGGER unique_tags
 BEFORE INSERT OR UPDATE ON pgl_ddl_deploy.set_configs
 FOR EACH ROW EXECUTE PROCEDURE pgl_ddl_deploy.unique_tags();
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.set_tag_defaults()
+RETURNS TRIGGER AS
+$BODY$
+BEGIN
+IF NEW.create_tags IS NULL THEN
+    NEW.create_tags = CASE WHEN NEW.include_only_repset_tables THEN '{"ALTER TABLE"}' ELSE pgl_ddl_deploy.standard_create_tags() END;
+END IF;
+IF NEW.drop_tags IS NULL THEN
+    NEW.drop_tags = CASE WHEN NEW.include_only_repset_tables THEN NULL ELSE pgl_ddl_deploy.standard_drop_tags() END;
+END IF;
+RETURN NEW;
+END;
+$BODY$
+LANGUAGE plpgsql;
+
+CREATE TRIGGER set_tag_defaults
+BEFORE INSERT OR UPDATE ON pgl_ddl_deploy.set_configs
+FOR EACH ROW EXECUTE PROCEDURE pgl_ddl_deploy.set_tag_defaults();
 
 ALTER TABLE pgl_ddl_deploy.subscriber_logs
  ADD COLUMN full_ddl_sql TEXT,

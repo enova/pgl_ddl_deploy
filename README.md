@@ -270,15 +270,16 @@ Add rows to `pgl_ddl_deploy.set_configs` in order to configure (but not yet
 deploy) DDL replication for a particular replication set.  For example:
 ```sql
 --Only some options are shown.  See below for all options
-INSERT INTO pgl_ddl_deploy.set_configs
-(set_name,
-include_schema_regex,
-lock_safe_deployment,
-allow_multi_statements)
-VALUES ('default',
-  '.*',
-  true,
-  true);
+
+--This type of configuration will DDL replicate all user schemas, and auto-add
+--new matching schemas/tables to replication:
+INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex)
+VALUES ('default', '.*');
+
+--This type of configuration will maintain only the specific set of tables
+--in the given replication set for any `ALTER TABLE` statements:
+INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_only_repset_tables)
+VALUES ('my_special_tables', TRUE);
 ```
 
 The relevant settings:
@@ -295,13 +296,19 @@ SQL statement with a single node `parsetree`) will be eligible for propagation.
 - `include_only_repset_tables`: if true, only tables that are in replication will
   be maintained by DDL replication.  Thus only `ALTER TABLE`
   statements are permitted here.  This option is incompatible with
-  `include_schema_regex`
+  `include_schema_regex`.
 - `queue_subscriber_failures`: if true, DDL will be allowed to fail on subscriber
   without breaking replication, and queued for retry using function
   `pgl_ddl_deploy.retry_all_subscriber_logs()`.  This is useful for example if you
   are replicating `VIEW` DDL but do not want failures to block data replication. It
   is **NOT** recommendeded that you use this with any `TABLE` replication, since those
   events are likely to break data replication.
+- `create_tags`: the set of command tags for which the create event triggers will
+  fire.  Change with caution.  These are defaulted to the appropriate default set
+  for either `include_schema_regex` or `include_only_repset_tables`.
+- `drop_tags`: the set of command tags for which the drop event triggers will fire.
+  Change with caution.  These are defaulted to the appropriate default set
+  for either `include_schema_regex` or `include_only_repset_tables`.
 
 There is already a pattern of schemas excluded always that you need not worry
 about. You can view them in this function:
