@@ -3,6 +3,7 @@
 Transparent DDL replication for Postgres 9.5+
 
 [Overview](#overview)
+- [Release Notes](#release_notes)
 - [High Level Description](#high_level)
 - [Features](#features)
 - [A Full Example](#full_example)
@@ -31,6 +32,16 @@ Transparent DDL replication for Postgres 9.5+
 
 Read the Release Summary:
 https://innovation.enova.com/pursuing-postgres-ddl-replication/
+
+# <a name="release_notes"></a>Release Notes
+
+### Release 1.1
+Summary of changes:
+
+* Allow a customized set of command tags for event triggers in set_configs - defaulted to the original tags in 1.0.
+* Add DDL replication by the specific set of tables (include_only_repset_tables) in a replication set, instead of schema-only regex. This option only supports ALTER TABLE events
+* Add option to allow subscriber DDL to fail and be queued without breaking replication - useful for VIEWs and such which we want to replicate but we don't want failures to stop data replication - queue_subscriber_failures
+* Allow to mark unhandled events as resolved for monitoring purposes
 
 ## <a name="high_level"></a>High Level Description
 
