@@ -1,0 +1,70 @@
+--This will show different warnings depending on if we are actually updating to new version or not
+SET client_min_messages = error;
+ALTER EXTENSION pgl_ddl_deploy UPDATE;
+SELECT pgl_ddl_deploy.deploy('test1');
+ deploy 
+--------
+ t
+(1 row)
+
+DO $$
+DECLARE v_rec RECORD;
+BEGIN
+
+FOR v_rec IN
+    SELECT set_name
+    FROM pglogical.replication_set
+    WHERE set_name LIKE 'test%' AND set_name <> 'test1'
+    ORDER BY set_name
+LOOP
+
+PERFORM pgl_ddl_deploy.deploy(v_rec.set_name);
+
+END LOOP;
+
+END$$;
+--Now that we are on highest version, ensure WARNING shows
+SELECT pglogical.create_replication_set
+(set_name:='testtemp'
+,replicate_insert:=TRUE
+,replicate_update:=TRUE
+,replicate_delete:=TRUE
+,replicate_truncate:=TRUE)
+INTO TEMP repset;
+DROP TABLE repset;
+SET client_min_messages = warning;
+BEGIN;
+INSERT INTO pgl_ddl_deploy.set_configs (id, set_name, include_schema_regex, lock_safe_deployment, allow_multi_statements)
+VALUES (999, 'testtemp','.*',true, true);
+CREATE TABLE break(id serial primary key);
+SELECT pgl_ddl_deploy.deploy('testtemp');
+WARNING:  
+  Deployment of auto-replication for id 999 set_name testtemp failed
+  because 1 tables are already queued to be added to replication
+  based on your configuration.  These tables need to be added to
+  replication manually and synced, otherwise change your configuration.
+  Debug query: 
+    SELECT n.nspname, c.relname
+    FROM pg_namespace n
+      INNER JOIN pg_class c ON n.oid = c.relnamespace
+        AND c.relpersistence = 'p'
+      WHERE n.nspname ~* '.*'
+        AND n.nspname !~* '^(pg_catalog|information_schema|pg_temp|pg_toast|pgl_ddl_deploy|pglogical).*'
+        AND EXISTS (SELECT 1
+        FROM pg_index i
+        WHERE i.indrelid = c.oid
+          AND i.indisprimary)
+        AND NOT EXISTS
+        (SELECT 1
+        FROM pgl_ddl_deploy.rep_set_table_wrapper rsr
+        INNER JOIN pglogical.replication_set r
+          ON r.set_id = rsr.set_id
+        WHERE r.set_name = 'testtemp'
+          AND rsr.set_reloid = c.oid);
+    
+ deploy 
+--------
+ f
+(1 row)
+
+ROLLBACK;

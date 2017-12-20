@@ -3,6 +3,7 @@
 Transparent DDL replication for Postgres 9.5+
 
 [Overview](#overview)
+- [Release Notes](#release_notes)
 - [High Level Description](#high_level)
 - [Features](#features)
 - [A Full Example](#full_example)
@@ -31,6 +32,16 @@ Transparent DDL replication for Postgres 9.5+
 
 Read the Release Summary:
 https://innovation.enova.com/pursuing-postgres-ddl-replication/
+
+# <a name="release_notes"></a>Release Notes
+
+### Release 1.1
+Summary of changes:
+
+* Allow a customized set of command tags for event triggers in set_configs - defaulted to the original tags in 1.0.
+* Add DDL replication by the specific set of tables (include_only_repset_tables) in a replication set, instead of schema-only regex. This option only supports ALTER TABLE events
+* Add option to allow subscriber DDL to fail and be queued without breaking replication - useful for VIEWs and such which we want to replicate but we don't want failures to stop data replication - queue_subscriber_failures
+* Allow to mark unhandled events as resolved for monitoring purposes
 
 ## <a name="high_level"></a>High Level Description
 
@@ -85,10 +96,17 @@ of replication.
 
 - Filtering by schema (regular expression) is supported.  This allows you to
   selectively replicate only certain schemas within a replication set.
+  
+- Filtering by a specific set of tables is supported, which is most useful to
+  replicate a small set of tables and maintain things like columns added/dropped
 
 - There is an option to deploy in a lock-safe way on subscribers.  Note that
   this means replication will lag until all blockers finish running or are
 terminated.
+
+- There is an option to fail certain events on the subscriber to be retried later.
+  This is useful for example if you are replicating VIEW DDL but do not want that
+  to block replication on failure.
 
 - In some edge cases, alerting can be built around provided logging for the DBA
   to then handle possible manual deployments
@@ -262,27 +280,46 @@ DDL replication is configured on a per-replication set basis, in terms of
 Add rows to `pgl_ddl_deploy.set_configs` in order to configure (but not yet
 deploy) DDL replication for a particular replication set.  For example:
 ```sql
-INSERT INTO pgl_ddl_deploy.set_configs
-(set_name,
-include_schema_regex,
-lock_safe_deployment,
-allow_multi_statements)
-VALUES ('default',
-  '.*',
-  true,
-  true);
+--Only some options are shown.  See below for all options
+
+--This type of configuration will DDL replicate all user schemas, and auto-add
+--new matching schemas/tables to replication:
+INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex)
+VALUES ('default', '.*');
+
+--This type of configuration will maintain only the specific set of tables
+--in the given replication set for any `ALTER TABLE` statements:
+INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_only_repset_tables)
+VALUES ('my_special_tables', TRUE);
 ```
 
 The relevant settings:
 - `set_name`: pglogical replication_set name
 - `include_schema_regex`: a regular expression for which schemas to include in
-  DDL replication
+  DDL replication.  This can be used to auto-add new tables to replication.  This
+  option is incompatible with `include_only_repset_tables`.
 - `lock_safe_deployment`: if true, DDL will execute in a low `lock_timeout` loop
   on subscriber
 - `allow_multi_statements`: if true, multiple SQL statements sent by client can
   be propagated under certain conditions.  See below for more details on caveats
 and edge cases.  If false, only a single SQL statement (technically speaking - a
 SQL statement with a single node `parsetree`) will be eligible for propagation.
+- `include_only_repset_tables`: if true, only tables that are in replication will
+  be maintained by DDL replication.  Thus only `ALTER TABLE`
+  statements are permitted here.  This option is incompatible with
+  `include_schema_regex`.
+- `queue_subscriber_failures`: if true, DDL will be allowed to fail on subscriber
+  without breaking replication, and queued for retry using function
+  `pgl_ddl_deploy.retry_all_subscriber_logs()`.  This is useful for example if you
+  are replicating `VIEW` DDL but do not want failures to block data replication. It
+  is **NOT** recommendeded that you use this with any `TABLE` replication, since those
+  events are likely to break data replication.
+- `create_tags`: the set of command tags for which the create event triggers will
+  fire.  Change with caution.  These are defaulted to the appropriate default set
+  for either `include_schema_regex` or `include_only_repset_tables`.
+- `drop_tags`: the set of command tags for which the drop event triggers will fire.
+  Change with caution.  These are defaulted to the appropriate default set
+  for either `include_schema_regex` or `include_only_repset_tables`.
 
 There is already a pattern of schemas excluded always that you need not worry
 about. You can view them in this function:
@@ -333,10 +370,14 @@ WHERE rolname IN('app_owner_role');
 To **deploy** (meaning activate) DDL replication for a given replication set,
 run:
 ```sql
+--Deploy any set_configs with given set_name:
 SELECT pgl_ddl_deploy.deploy(set_name);
+
+--Deploy only a single set_config_id:
+SELECT pgl_ddl_deploy.deploy(set_config_id);
 ```
 - From this point on, the event triggers are live and will fire on the following
-  events:
+  events (by default, unless you have customized `create_tags` or `drop_tags`):
 ```
    command_tag
 -----------------
@@ -363,8 +404,6 @@ SELECT pgl_ddl_deploy.deploy(set_name);
 
 - Not all of these events are handled in the same way - see Limitations and
   Restrictions below
-- Currently, the event trigger command list is not configurable.  But such a
-  feature would be straightforward to add if requested
 - Note that if, based on your configuration, you have tables that *should* be
   added to replication already, but are not, you will not be allowed to deploy.
 This is because DDL replication should only be expected to automatically add
@@ -374,6 +413,11 @@ manually and sync as necessary.
 DDL replication can be disabled/enabled (this will disable/enable event
 triggers):
 ```sql
+--By set_name
+SELECT pgl_ddl_deploy.disable(set_name);
+SELECT pgl_ddl_deploy.enable(set_name);
+
+--By set_config_id
 SELECT pgl_ddl_deploy.disable(set_name);
 SELECT pgl_ddl_deploy.enable(set_name);
 ```
@@ -414,8 +458,14 @@ addition to server log warnings raised at `WARNING` level in case of issues:
 - `commands` - Logs detailed output from `pg_event_trigger_ddl_commands()` and
   `pg_event_trigger_dropped_objects()`
 - `unhandled` - Any DDL that is captured but cannot be handled by this framework
-  (see details below) is logged here
+  (see details below) is logged here.
 - `exceptions` - Any unexpected exception raise by the event trigger functions are logged here
+
+There are `resolved` fields on the `unhandled` and `exceptions` tables that can
+be marked so that monitoring will show only new problems based on this table by
+using functions:
+- `pgl_ddl_deploy.resolve_unhandled(unhandled_id INT, notes TEXT = NULL)`
+- `pgl_ddl_deploy.resolve_exception(exception_id INT, notes TEXT = NULL)`
 
 # <a name="limitations"></a>Limitations and Restrictions
 
@@ -548,7 +598,8 @@ DDL changes.
 ## <a name="resolve_failed"></a>Resolving Failed DDL on Subscribers
 
 In some cases, you may propagate DDL that fails on the subscriber, and
-replication will break.  You will then need to:
+replication will break, unless you have enabled `queue_subscriber_failures`.
+You will then need to:
 - Manually deploy with the same SQL statement modified so that it excludes the
   failing portion.  For the example above of both adding a column and adding a
 foreign key, assuming we don't have that `unreplicated` table, then you would
@@ -560,6 +611,17 @@ ALTER TABLE replicated.foo ADD COLUMN foo_id INT;
   `pg_logical_slot_get_changes` **up to specific LSN** of the transaction which
 included the DDL statement to get replication working again.
 - Re-enable replication for affected subscriber(s)
+
+If you are using `queue_subscriber_failures`, any DDL failures for your given
+configuration will be logged as failed in `pgl_ddl_deploy.subscriber_logs`.
+You can resolve issues, and attempt to re-deploy by using functions:
+```sql
+--Retry all failed, in transactional order
+SELECT pgl_ddl_deploy.retry_all_subscriber_logs();
+
+--Retry only a single failed log
+SELECT pgl_ddl_deploy.retry_subscriber_log(subscriber_log_id);
+```
 
 ## <a name="resolve_unhandled"></a>Resolving Unhandled DDL
 
@@ -585,6 +647,10 @@ CREATE TABLE foo (id serial primary key, bla text);
 - If a new table is NOT involved (for example `ALTER TABLE ADD COLUMN`), then
   replication will simply continue where it broke
 - Re-enable replication for affected subscriber(s)
+- Mark your unhandled records as resolved using function:
+```sql
+SELECT pgl_ddl_deploy.resolve_unhandled(unhandled_id INT, notes TEXT = NULL);
+```
 
 To be more conservative, we may want a feature that forces replication to break
 if there is an unhandled deployment, for example, by sending an exception
@@ -612,6 +678,10 @@ the parser to programatically use only what we want and send it to subscribers?
 I think we do, but lots of work would be required, and we would welcome those
 with more comfort in the parser code to help if interested.
 
+## <a name="sql files"></a>SQL files
+To build the higher version SQL files (i.e. 1.1) from the lower versions +
+the upgrade patch SQL files, run `pgl_ddl_deploy-sql-maker.sh`.
+
 ## <a name="regression"></a>Regression testing
 You can run the regression suite, which must be on a server that has pglogical
 packages available, and a cluster that is configured to allow creating the
@@ -624,4 +694,8 @@ As with any Postgres extension:
 ```
 make install
 make installcheck
+
+# There is support for testing both 1.1 and the upgraded path from 1.0 to 1.1
+FROMVERSION=1.0 make installcheck   # Test from 1.0 upgrade to 1.1
+FROMVERSION=1.1 make installcheck
 ```

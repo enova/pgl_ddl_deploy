@@ -1,4 +1,5 @@
-SET client_min_messages = warning;
+--These will show different warnings depending on version 
+SET client_min_messages = error;
 \set VERBOSITY TERSE
 /***
 No deploy allowed if table would be added to replication
@@ -7,30 +8,6 @@ SET ROLE test_pgl_ddl_deploy;
 CREATE TABLE foo(id serial primary key);
 RESET ROLE;
 SELECT pgl_ddl_deploy.deploy('test1');
-WARNING:  
-  Deployment of auto-replication for set test1 failed
-  because 1 tables are already queued to be added to replication
-  based on your configuration.  These tables need to be added to
-  replication manually and synced, otherwise change your configuration.
-  Debug query: 
-    SELECT n.nspname, c.relname 
-    FROM pg_namespace n
-      INNER JOIN pg_class c ON n.oid = c.relnamespace
-        AND c.relpersistence = 'p'
-      WHERE n.nspname ~* '.*'
-        AND n.nspname !~* '^(pg_catalog|information_schema|pg_temp|pg_toast|pgl_ddl_deploy|pglogical).*'
-        AND EXISTS (SELECT 1
-        FROM pg_index i
-        WHERE i.indrelid = c.oid
-          AND i.indisprimary)
-        AND NOT EXISTS
-        (SELECT 1
-        FROM pgl_ddl_deploy.rep_set_table_wrapper rsr
-        INNER JOIN pglogical.replication_set r
-          ON r.set_id = rsr.set_id
-        WHERE r.set_name = 'test1'
-          AND rsr.set_reloid = c.oid);
-    
  deploy 
 --------
  f
@@ -58,30 +35,6 @@ SET ROLE test_pgl_ddl_deploy;
 CREATE TABLE foo(id serial primary key);
 RESET ROLE;
 SELECT pgl_ddl_deploy.enable('test1');
-WARNING:  
-  Deployment of auto-replication for set test1 failed
-  because 1 tables are already queued to be added to replication
-  based on your configuration.  These tables need to be added to
-  replication manually and synced, otherwise change your configuration.
-  Debug query: 
-    SELECT n.nspname, c.relname 
-    FROM pg_namespace n
-      INNER JOIN pg_class c ON n.oid = c.relnamespace
-        AND c.relpersistence = 'p'
-      WHERE n.nspname ~* '.*'
-        AND n.nspname !~* '^(pg_catalog|information_schema|pg_temp|pg_toast|pgl_ddl_deploy|pglogical).*'
-        AND EXISTS (SELECT 1
-        FROM pg_index i
-        WHERE i.indrelid = c.oid
-          AND i.indisprimary)
-        AND NOT EXISTS
-        (SELECT 1
-        FROM pgl_ddl_deploy.rep_set_table_wrapper rsr
-        INNER JOIN pglogical.replication_set r
-          ON r.set_id = rsr.set_id
-        WHERE r.set_name = 'test1'
-          AND rsr.set_reloid = c.oid);
-    
  enable 
 --------
  f
