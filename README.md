@@ -35,6 +35,12 @@ https://innovation.enova.com/pursuing-postgres-ddl-replication/
 
 # <a name="release_notes"></a>Release Notes
 
+### Release 1.2
+Summary of changes:
+
+* Fix a bug where unsupported event triggers are created for `include_only_repset_tables` configs,
+which only apply to `include_schema_regex` configs
+
 ### Release 1.1
 Summary of changes:
 
@@ -610,6 +616,9 @@ ALTER TABLE replicated.foo ADD COLUMN foo_id INT;
 - Consume the change in affected replication slot using
   `pg_logical_slot_get_changes` **up to specific LSN** of the transaction which
 included the DDL statement to get replication working again.
+- You could also "trick" the DDL into applying - for example, by creating a dummy
+object that will allow the DDL to apply even if you don't need it, then discarding
+those objects once replication is working again.
 - Re-enable replication for affected subscriber(s)
 
 If you are using `queue_subscriber_failures`, any DDL failures for your given
