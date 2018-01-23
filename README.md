@@ -40,6 +40,7 @@ Summary of changes:
 
 * Fix a bug where unsupported event triggers are created for `include_only_repset_tables` configs,
 which only apply to `include_schema_regex` configs
+* Add grant to pglogical.replication_set to allow any user to fire event trigger function even for temp tables
 
 ### Release 1.1
 Summary of changes:
