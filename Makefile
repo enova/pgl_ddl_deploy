@@ -12,7 +12,7 @@ REGRESS := 01_create_ext 02_setup 03_add_configs 04_deploy 04_deploy_update \
            17_include_only_repset_tables_1 \
            18_include_only_repset_tables_2 \
            19_include_only_repset_tables_3 \
-           20_sub_retries \
+           20_unprivileged_users 21_sub_retries \
            99_cleanup
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
