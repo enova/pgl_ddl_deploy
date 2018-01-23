@@ -647,3 +647,6 @@ FROM build b;
 
 --Just do this to avoid unneeded complexity with dependency_update
 GRANT SELECT ON TABLE pgl_ddl_deploy.rep_set_table_wrapper TO PUBLIC;
+
+--Need this for unprivileged users to be able to run the function and check if tables are repset tables
+GRANT SELECT ON TABLE pglogical.replication_set TO PUBLIC;
