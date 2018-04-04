@@ -35,6 +35,13 @@ https://innovation.enova.com/pursuing-postgres-ddl-replication/
 
 # <a name="release_notes"></a>Release Notes
 
+### Release 1.3
+Summary of changes:
+
+* Fix missed renaming of columns or constraints for `include_only_repset_tables` configs
+* Added `undeploy` functions which allow you to drop DDL replication for only a given config
+* Add `is_deployed` column to `event_trigger_schema` to easily tell which configs are deployed. 
+
 ### Release 1.2
 Summary of changes:
 
@@ -427,6 +434,13 @@ SELECT pgl_ddl_deploy.enable(set_name);
 --By set_config_id
 SELECT pgl_ddl_deploy.disable(set_name);
 SELECT pgl_ddl_deploy.enable(set_name);
+```
+
+You can also undeploy DDL replication, which means dropping all event triggers
+and functions for a given config: 
+```sql
+SELECT pgl_ddl_deploy.undeploy(set_name);
+SELECT pgl_ddl_deploy.undeploy(set_config_id);
 ```
 
 If you want to **change** the configuration in `set_configs`, you can re-deploy
