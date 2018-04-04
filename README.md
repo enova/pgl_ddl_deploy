@@ -2,6 +2,10 @@
 
 Transparent DDL replication for Postgres 9.5+
 
+### Announcement April 2018:
+Linux packages were just released as `postgresql-<VER>-pgl-ddl-deploy`!  We sincerely appreciate your
+trying out this extension and providing any feedback.
+
 [Overview](#overview)
 - [Release Notes](#release_notes)
 - [High Level Description](#high_level)
@@ -30,7 +34,7 @@ Transparent DDL replication for Postgres 9.5+
 
 # <a name="overview"></a>Overview
 
-Read the Release Summary:
+### Read the Release Summary:
 https://innovation.enova.com/pursuing-postgres-ddl-replication/
 
 # <a name="release_notes"></a>Release Notes
@@ -251,7 +255,13 @@ data.
 ## <a name="installation"></a>Installation
 
 The functionality of this requires postgres version 9.5+ and a working install
-of pglogical.  Packages will be available soon.  To build from source:
+of pglogical.  To install via apt-get:
+```
+apt-get install postgresql-<VER>-pgl-ddl-deploy
+```
+Where `<VER>` is whatever postgres version the plugin is built against.
+
+To build from source:
 ```
 make
 make install
