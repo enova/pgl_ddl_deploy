@@ -1,0 +1,137 @@
+--****NOTE*** this file drops the whole extension and all previous test setup.
+--If adding new tests, it is best to keep this file as the last test before cleanup.
+SET client_min_messages = warning;
+
+--Some day, we should regress with multiple databases.  There are examples of this in pglogical code base
+--For now, we will mock the subscriber behavior, which is less than ideal, because it misses testing execution
+--on subscriber
+
+DROP EXTENSION pgl_ddl_deploy CASCADE;
+
+--This version had missing functionality for certain alter table events like rename column.
+CREATE EXTENSION pgl_ddl_deploy VERSION '1.2'; 
+
+--These are the same sets as in the new_set_behavior.sql
+INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex, lock_safe_deployment, allow_multi_statements, include_only_repset_tables, create_tags, drop_tags)
+SELECT 'my_special_tables_1', NULL, TRUE, TRUE, TRUE, '{"ALTER TABLE"}', NULL;
+
+INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex, lock_safe_deployment, allow_multi_statements, include_only_repset_tables, create_tags, drop_tags)
+SELECT 'my_special_tables_2', NULL, TRUE, TRUE, TRUE, '{"ALTER TABLE"}', NULL; 
+
+--One include_schema_regex one that should be unchanged
+WITH new_sets (set_name) AS (
+  VALUES ('testspecial'::TEXT)
+)
+
+SELECT pglogical.create_replication_set
+(set_name:=s.set_name
+,replicate_insert:=TRUE
+,replicate_update:=TRUE
+,replicate_delete:=TRUE
+,replicate_truncate:=TRUE) AS result
+INTO TEMP repsets
+FROM new_sets s
+WHERE NOT EXISTS (
+SELECT 1
+FROM pglogical.replication_set
+WHERE set_name = s.set_name);
+
+DROP TABLE repsets;
+
+INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex, lock_safe_deployment, allow_multi_statements)
+VALUES ('testspecial','^special$',true, true);
+SELECT pgl_ddl_deploy.deploy('testspecial');
+
+--These kinds of repsets will not replicate CREATE events, only ALTER TABLE, so deploy after CREATE
+--We assume schema will be copied to subscriber separately
+CREATE SCHEMA special;
+CREATE TABLE special.foo (id serial primary key, foo text, bar text);
+CREATE TABLE special.bar (id serial primary key, super text, man text);
+
+SELECT pglogical.replication_set_add_table(
+  set_name:='my_special_tables_1'
+  ,relation:='special.foo'::REGCLASS);
+
+SELECT pglogical.replication_set_add_table(
+  set_name:='my_special_tables_2'
+  ,relation:='special.bar'::REGCLASS);
+
+--Deploy by set_name
+SELECT pgl_ddl_deploy.deploy('my_special_tables_1');
+SELECT pgl_ddl_deploy.deploy('my_special_tables_2');
+
+--Get the oid and definition to ensure that alter extension update correctly updates them
+CREATE TEMP TABLE pre_ext_update AS
+SELECT evt.oid,
+    sc.include_only_repset_tables,
+    auto_replication_create_function_name,
+    EXISTS (SELECT 1
+    FROM pg_event_trigger
+    WHERE evtname IN(
+        auto_replication_create_trigger_name,
+        auto_replication_drop_trigger_name,
+        auto_replication_unsupported_trigger_name
+        )
+        AND evtenabled IN('O','R','A')
+    ) AS is_deployed, 
+    pg_get_functiondef(auto_replication_create_function_name::REGPROC) AS def
+FROM pg_event_trigger evt
+INNER JOIN pgl_ddl_deploy.event_trigger_schema ets
+    ON evt.evtname IN(auto_replication_unsupported_trigger_name,
+    ets.auto_replication_drop_trigger_name,
+    ets.auto_replication_create_trigger_name)
+INNER JOIN pgl_ddl_deploy.set_configs sc USING (id);
+
+SELECT 
+    include_only_repset_tables,
+    auto_replication_create_function_name,
+    is_deployed,
+    LEFT(def, 30) AS def
+FROM pre_ext_update
+ORDER BY auto_replication_create_function_name;
+
+ALTER EXTENSION pgl_ddl_deploy UPDATE;
+
+--Show diff
+SELECT 'changed_record' as result,
+    include_only_repset_tables,
+    auto_replication_create_function_name,
+    is_deployed,
+    LEFT(def, 30) AS def
+FROM (
+SELECT evt.oid,
+    ets.include_only_repset_tables,
+    auto_replication_create_function_name,
+    is_deployed,
+    pg_get_functiondef(auto_replication_create_function_name::REGPROC) AS def
+FROM pg_event_trigger evt
+INNER JOIN pgl_ddl_deploy.event_trigger_schema ets
+    ON evt.evtname IN(auto_replication_unsupported_trigger_name,
+    ets.auto_replication_drop_trigger_name,
+    ets.auto_replication_create_trigger_name)
+EXCEPT
+SELECT * FROM pre_ext_update) a
+ORDER BY auto_replication_create_function_name;
+
+--Show unchanged - should be non-repset-tables 
+SELECT 'unchanged_record' as result,
+    include_only_repset_tables,
+    auto_replication_create_function_name,
+    is_deployed,
+    LEFT(def, 30) AS def
+FROM (
+SELECT evt.oid,
+    ets.include_only_repset_tables,
+    auto_replication_create_function_name,
+    is_deployed,
+    pg_get_functiondef(auto_replication_create_function_name::REGPROC) AS def
+FROM pg_event_trigger evt
+INNER JOIN pgl_ddl_deploy.event_trigger_schema ets
+    ON evt.evtname IN(auto_replication_unsupported_trigger_name,
+    ets.auto_replication_drop_trigger_name,
+    ets.auto_replication_create_trigger_name)
+INTERSECT
+SELECT * FROM pre_ext_update) a
+ORDER BY auto_replication_create_function_name;
+
+DROP TABLE pre_ext_update;

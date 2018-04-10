@@ -1,0 +1,118 @@
+SET client_min_messages TO warning;
+--Test what is_deployed shows (introduced in 1.3)
+SELECT set_name, is_deployed FROM pgl_ddl_deploy.event_trigger_schema ORDER BY id;
+      set_name       | is_deployed 
+---------------------+-------------
+ test1               | t
+ test2               | t
+ test3               | t
+ test4               | t
+ test5               | t
+ test6               | t
+ test7               | t
+ test8               | t
+ test1               | t
+ my_special_tables_1 | t
+ my_special_tables_2 | t
+(11 rows)
+
+SELECT pgl_ddl_deploy.undeploy(id) FROM pgl_ddl_deploy.set_configs;
+ undeploy 
+----------
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+(11 rows)
+
+SELECT set_name, is_deployed FROM pgl_ddl_deploy.event_trigger_schema ORDER BY id;
+      set_name       | is_deployed 
+---------------------+-------------
+ test1               | f
+ test2               | f
+ test3               | f
+ test4               | f
+ test5               | f
+ test6               | f
+ test7               | f
+ test8               | f
+ test1               | f
+ my_special_tables_1 | f
+ my_special_tables_2 | f
+(11 rows)
+
+--Nothing should replicate this
+CREATE TABLE foobar (id serial primary key);
+DROP TABLE foobar;
+SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |           ddl_sql_raw            |           ddl_sql_sent           
+----------+----------------------------------+----------------------------------
+ test4    | DROP SCHEMA special;             | DROP SCHEMA special;
+ test3    | DROP SCHEMA special;             | DROP SCHEMA special;
+ test2    | DROP SCHEMA special;             | DROP SCHEMA special;
+ test1    | DROP SCHEMA special;             | DROP SCHEMA special;
+ test4    | DROP TABLE special.barz CASCADE; | DROP TABLE special.barz CASCADE;
+ test3    | DROP TABLE special.barz CASCADE; | DROP TABLE special.barz CASCADE;
+ test2    | DROP TABLE special.barz CASCADE; | DROP TABLE special.barz CASCADE;
+ test1    | DROP TABLE special.barz CASCADE; | DROP TABLE special.barz CASCADE;
+ test4    | DROP TABLE special.fooz CASCADE; | DROP TABLE special.fooz CASCADE;
+ test3    | DROP TABLE special.fooz CASCADE; | DROP TABLE special.fooz CASCADE;
+(10 rows)
+
+--Re-deploy and check again what shows as deployed
+SELECT pgl_ddl_deploy.deploy(id) FROM pgl_ddl_deploy.set_configs;
+ deploy 
+--------
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+(11 rows)
+
+SELECT set_name, is_deployed FROM pgl_ddl_deploy.event_trigger_schema ORDER BY id;
+      set_name       | is_deployed 
+---------------------+-------------
+ test1               | t
+ test2               | t
+ test3               | t
+ test4               | t
+ test5               | t
+ test6               | t
+ test7               | t
+ test8               | t
+ test1               | t
+ my_special_tables_1 | t
+ my_special_tables_2 | t
+(11 rows)
+
+CREATE TABLE foobar (id serial primary key);
+DROP TABLE foobar CASCADE;
+SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |                 ddl_sql_raw                  |                 ddl_sql_sent                 
+----------+----------------------------------------------+----------------------------------------------
+ test4    | DROP TABLE foobar CASCADE;                   | DROP TABLE foobar CASCADE;
+ test3    | DROP TABLE foobar CASCADE;                   | DROP TABLE foobar CASCADE;
+ test2    | DROP TABLE foobar CASCADE;                   | DROP TABLE foobar CASCADE;
+ test1    | DROP TABLE foobar CASCADE;                   | DROP TABLE foobar CASCADE;
+ test4    | CREATE TABLE foobar (id serial primary key); | CREATE TABLE foobar (id serial primary key);
+ test3    | CREATE TABLE foobar (id serial primary key); | CREATE TABLE foobar (id serial primary key);
+ test2    | CREATE TABLE foobar (id serial primary key); | CREATE TABLE foobar (id serial primary key);
+ test1    | CREATE TABLE foobar (id serial primary key); | CREATE TABLE foobar (id serial primary key);
+ test4    | DROP SCHEMA special;                         | DROP SCHEMA special;
+ test3    | DROP SCHEMA special;                         | DROP SCHEMA special;
+(10 rows)
+
