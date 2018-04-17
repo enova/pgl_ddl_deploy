@@ -1,3 +1,9 @@
+pgl-ddl-deploy (1.3.0-1) unstable; urgency=medium
+
+  * Version 1.3.0 from upstream.
+
+ -- Dominic Salvador <dsalvador@enova.com>  Tue, 17 Apr 2018 14:04:55 -0500
+
 pgl-ddl-deploy (1.2.0-1) unstable; urgency=medium
 
   * Version 1.2.0 from upstream.
