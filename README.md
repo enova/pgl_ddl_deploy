@@ -265,8 +265,8 @@ make install
 make installcheck # run regression suite
 ```
 
-DEB and RPM packages  available on official PGDG repository as ```postgresql-${PGSQL_VERSION}-pgl-ddl-deploy```
-see installation instruction on https://wiki.postgresql.org/wiki/Apt and https://wiki.postgresql.org/wiki/YUM_Installation
+DEB available on official PGDG repository as ```postgresql-${PGSQL_VERSION}-pgl-ddl-deploy```
+see installation instruction on https://wiki.postgresql.org/wiki/Apt
 
 See the notes below on requirements to run the regression suite.
 
