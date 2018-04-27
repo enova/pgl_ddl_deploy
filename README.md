@@ -265,6 +265,9 @@ make install
 make installcheck # run regression suite
 ```
 
+DEB available on official PGDG repository as ```postgresql-${PGSQL_VERSION}-pgl-ddl-deploy```
+see installation instruction on https://wiki.postgresql.org/wiki/Apt
+
 See the notes below on requirements to run the regression suite.
 
 This extension requires pglogical to be installed before you can create the
