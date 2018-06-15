@@ -182,7 +182,7 @@ SELECT 'ALTER TABLE '||quote_ident(n.nspname)||'.'||quote_ident(c.relname)||' OW
 FROM pglogical.replication_set rs
 INNER JOIN pgl_ddl_deploy.set_configs sc
   ON sc.set_name = rs.set_name
-INNER JOIN pgl_ddl_deploy.rep_set_table_wrapper rsr
+INNER JOIN pgl_ddl_deploy.rep_set_table_wrapper() rsr
   ON rsr.set_id = rs.set_id
 INNER JOIN pg_class c ON c.oid = rsr.set_reloid
 INNER JOIN pg_namespace n ON n.oid = c.relnamespace

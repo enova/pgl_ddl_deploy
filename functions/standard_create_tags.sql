@@ -1,0 +1,20 @@
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.standard_create_tags()
+ RETURNS text[]
+ LANGUAGE sql
+ IMMUTABLE
+AS $function$
+SELECT '{
+  "ALTER TABLE"
+  ,"CREATE SEQUENCE"
+  ,"ALTER SEQUENCE"
+  ,"CREATE SCHEMA"
+  ,"CREATE TABLE"
+  ,"CREATE FUNCTION"
+  ,"ALTER FUNCTION"
+  ,"CREATE TYPE"
+  ,"ALTER TYPE"
+  ,"CREATE VIEW"
+  ,"ALTER VIEW"
+  }'::TEXT[];
+$function$
+;
