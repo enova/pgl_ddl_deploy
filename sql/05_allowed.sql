@@ -5,7 +5,7 @@ SET client_min_messages TO warning;
 In default schema
 **/
 CREATE TABLE foo(id serial primary key);
-SELECT * FROM check_rep_tables;
+SELECT * FROM check_rep_tables();
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
 
 ALTER TABLE foo ADD COLUMN bla TEXT;
@@ -52,7 +52,7 @@ CREATE SCHEMA foobar;
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
 
 CREATE TABLE foobar.foo(id serial primary key);
-SELECT * FROM check_rep_tables;
+SELECT * FROM check_rep_tables();
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
 
 ALTER TABLE foobar.foo ADD COLUMN bla TEXT;
@@ -96,7 +96,7 @@ DROP SEQUENCE foobar.foo;
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
 
 DROP SCHEMA foobar CASCADE;
-SELECT * FROM check_rep_tables;
+SELECT * FROM check_rep_tables();
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
 
 SELECT * FROM pgl_ddl_deploy.unhandled;

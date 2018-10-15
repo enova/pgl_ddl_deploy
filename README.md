@@ -35,6 +35,14 @@ https://innovation.enova.com/pursuing-postgres-ddl-replication/
 
 # <a name="release_notes"></a>Release Notes
 
+### Release 1.4
+Summary of changes:
+
+* Feature: Allow filtering out ALTER TABLE by subcommand tags
+* Remove dependency_update function and implement more reliable dynamic `rep_set_table_wrapper` function
+* Allow `COMMENT` to be replicated with `include_only_repset_tables`
+* Add sequence for set_configs as an extension config
+
 ### Release 1.3
 Summary of changes:
 

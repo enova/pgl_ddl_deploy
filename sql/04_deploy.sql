@@ -14,7 +14,6 @@ RESET ROLE;
 
 --This should work now
 SELECT pgl_ddl_deploy.deploy('test1');
-
 --This should work
 SELECT pgl_ddl_deploy.disable('test1');
 

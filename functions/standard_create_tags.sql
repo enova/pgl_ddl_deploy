@@ -15,6 +15,6 @@ SELECT '{
   ,"ALTER TYPE"
   ,"CREATE VIEW"
   ,"ALTER VIEW"
-  }'::TEXT[];
+  ,COMMENT}'::TEXT[];
 $function$
 ;

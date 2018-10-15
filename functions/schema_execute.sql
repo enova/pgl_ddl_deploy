@@ -20,17 +20,4 @@ BEGIN
   END IF;
 END;
 $function$
-;ame = '$$||p_set_name||$$');$$;
-  EXECUTE v_in_sql INTO v_out_sql;
-  IF v_out_sql IS NULL THEN
-    RAISE WARNING 'Failed execution for id % set %', v_rec.id, p_set_name;
-    RETURN FALSE;
-  ELSE
-    EXECUTE v_out_sql;
-  END IF;
-
-  END LOOP;
-  RETURN TRUE;
-END;
-$function$
 ;

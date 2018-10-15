@@ -18,7 +18,7 @@ pg_lsclusters | awk -v version=$version '$1 == version { print $3 }'
 
 make_and_test() {
 version=$1
-from_version=${2:-1.2}
+from_version=${2:-1.4}
 set_path $version
 make clean
 sudo "PATH=$PATH" make uninstall
@@ -35,11 +35,11 @@ cat << EOM
 *******************FROM VERSION $from_version******************
 
 EOM
-make_and_test "9.5"
-make_and_test "9.6"
+#make_and_test "9.5"
+#make_and_test "9.6"
 make_and_test "10"
 }
 
-test_all_versions "1.2"
-test_all_versions "1.1"
-test_all_versions "1.0"
+test_all_versions "1.4"
+test_all_versions "1.3"
+#test_all_versions "1.0"

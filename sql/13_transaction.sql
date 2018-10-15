@@ -7,7 +7,7 @@ BEGIN;
 In default schema
 **/
 CREATE TABLE foo(id serial primary key);
-SELECT * FROM check_rep_tables;
+SELECT * FROM check_rep_tables();
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
 
 ALTER TABLE foo ADD COLUMN bla TEXT;
@@ -19,7 +19,7 @@ DROP TABLE foo CASCADE;
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
 
 CREATE TABLE foobar.foo(id serial primary key);
-SELECT * FROM check_rep_tables;
+SELECT * FROM check_rep_tables();
 SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
 
 ALTER TABLE foobar.foo ADD COLUMN bla TEXT;

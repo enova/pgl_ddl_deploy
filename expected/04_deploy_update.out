@@ -49,14 +49,14 @@ WARNING:
       INNER JOIN pg_class c ON n.oid = c.relnamespace
         AND c.relpersistence = 'p'
       WHERE n.nspname ~* '.*'
-        AND n.nspname !~* '^(pg_catalog|information_schema|pg_temp|pg_toast|pgl_ddl_deploy|pglogical).*'
+        AND n.nspname !~* '^(pg_catalog|information_schema|pg_temp.*|pg_toast.*|pgl_ddl_deploy|pglogical|pglogical_ticker|repack)$'
         AND EXISTS (SELECT 1
         FROM pg_index i
         WHERE i.indrelid = c.oid
           AND i.indisprimary)
         AND NOT EXISTS
         (SELECT 1
-        FROM pgl_ddl_deploy.rep_set_table_wrapper rsr
+        FROM pgl_ddl_deploy.rep_set_table_wrapper() rsr
         INNER JOIN pglogical.replication_set r
           ON r.set_id = rsr.set_id
         WHERE r.set_name = 'testtemp'

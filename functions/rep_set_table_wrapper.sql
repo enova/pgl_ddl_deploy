@@ -1,6 +1,7 @@
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.rep_set_table_wrapper()
  RETURNS TABLE (set_id OID, set_reloid REGCLASS)
  LANGUAGE plpgsql
+ SECURITY DEFINER
 AS $function$
 /*****
 This handles the rename of pglogical.replication_set_relation to pglogical.replication_set_table from version 1 to 2

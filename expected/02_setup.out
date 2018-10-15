@@ -26,8 +26,26 @@ SELECT pgl_ddl_deploy.add_role(oid) FROM pg_roles WHERE rolname = 'test_pgl_ddl_
 (1 row)
 
 SET ROLE test_pgl_ddl_deploy;
-CREATE VIEW check_rep_tables AS
-SELECT set_name::TEXT, set_reloid::TEXT AS table_name
-FROM pgl_ddl_deploy.rep_set_table_wrapper rsr
-INNER JOIN pglogical.replication_set rs USING (set_id)
-ORDER BY set_name::TEXT, set_reloid::TEXT;
+CREATE FUNCTION check_rep_tables() RETURNS TABLE (set_name TEXT, table_name TEXT)
+AS 
+$BODY$
+BEGIN
+
+-- Handle change from view to function rep_set_table_wrapper
+IF (SELECT extversion FROM pg_extension WHERE extname = 'pgl_ddl_deploy') = ANY('{1.0,1.1,1.2,1.3}'::text[]) THEN
+    RETURN QUERY EXECUTE $$
+    SELECT set_name::TEXT, set_reloid::TEXT AS table_name
+    FROM pgl_ddl_deploy.rep_set_table_wrapper rsr
+    INNER JOIN pglogical.replication_set rs USING (set_id)
+    ORDER BY set_name::TEXT, set_reloid::TEXT;$$;
+ELSE
+    RETURN QUERY EXECUTE $$ 
+    SELECT set_name::TEXT, set_reloid::TEXT AS table_name
+    FROM pgl_ddl_deploy.rep_set_table_wrapper() rsr
+    INNER JOIN pglogical.replication_set rs USING (set_id)
+    ORDER BY set_name::TEXT, set_reloid::TEXT;$$;
+END IF;
+
+END;
+$BODY$
+LANGUAGE plpgsql;

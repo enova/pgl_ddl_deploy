@@ -27,6 +27,10 @@ WITH vars AS
   v_ddl_sql_sent TEXT;
   v_full_ddl TEXT;
   v_sql_tags TEXT[];
+  v_cmd_rec RECORD;
+  v_subcmd_rec RECORD;
+  v_excluded_subcommands TEXT;
+  v_contains_any_valid_subcommand INT;
 
   /*****
   We need to strip the DDL of:
@@ -51,6 +55,7 @@ WITH vars AS
   c_include_only_repset_tables BOOLEAN = $BUILD$||include_only_repset_tables||$BUILD$;
   c_queue_subscriber_failures BOOLEAN = $BUILD$||queue_subscriber_failures||$BUILD$;
   c_blacklisted_tags TEXT[] = '$BUILD$||blacklisted_tags::TEXT||$BUILD$';
+  c_exclude_alter_table_subcommands TEXT[] = $BUILD$||COALESCE(quote_literal(exclude_alter_table_subcommands::TEXT),'NULL')||$BUILD$;
 
     --Constants based on configuration
   c_exec_prefix TEXT =(CASE
@@ -128,6 +133,48 @@ WITH vars AS
           RETURN;
         END IF;
 
+        /****
+          If this is an ALTER TABLE statement and we are excluding any subcommand tags, process now.
+          Note the following.
+
+          Because there can be more than one subcommand, we have a limited ability
+          to filter out subcommands until such a time as we may have a mechanism for rebuilding only
+          the SQL we want.  In other words, if we have one subcommand that we DO want (i.e. ADD COLUMN)
+          and one we don't want (i.e. REFERENCES) in the same SQL, and we are "excluding" the latter,
+          we can't do that exclusion safely because we WANT the ADD COLUMN statement.  In such a case,
+          we are still going to allow the DDL to go through because it's better to break replication than
+          miss a column addition.
+
+          But if the only subcommand is an excluded one, i.e. ADD CONSTRAINT, then we will indeed ignore
+          the DDL and the function will RETURN without executing replicate_ddl_command.
+        */
+        IF TG_TAG = 'ALTER TABLE' AND c_exclude_alter_table_subcommands IS NOT NULL THEN
+          FOR v_cmd_rec IN
+            SELECT * FROM pg_event_trigger_ddl_commands()
+          LOOP
+            IF pgl_ddl_deploy.get_command_type(v_cmd_rec.command) = 'alter table' THEN
+              WITH subcommands AS (
+                SELECT subcommand,
+                  c_exclude_alter_table_subcommands && ARRAY[subcommand] AS subcommand_is_excluded,
+                  MAX(CASE WHEN c_exclude_alter_table_subcommands && ARRAY[subcommand] THEN 0 ELSE 1 END) OVER() AS contains_any_valid_subcommand
+                FROM unnest(pgl_ddl_deploy.get_altertable_subcmdtypes(v_cmd_rec.command)) AS subcommand
+              )
+
+              SELECT (SELECT string_agg(subcommand,', ') FROM subcommands WHERE subcommand_is_excluded),
+                (SELECT contains_any_valid_subcommand FROM subcommands LIMIT 1)
+               INTO v_excluded_subcommands,
+                v_contains_any_valid_subcommand;
+              IF v_excluded_subcommands IS NOT NULL AND v_contains_any_valid_subcommand = 0 THEN
+                RAISE LOG 'Not processing DDL due to excluded subcommand(s): %: %', v_excluded_subcommands, v_ddl_sql_raw;
+                RETURN;
+              ELSEIF v_excluded_subcommands IS NOT NULL AND v_contains_any_valid_subcommand = 1 THEN
+                RAISE WARNING $INNER_BLOCK$Filtering out more than one subcommand in one ALTER TABLE is not supported.
+                Allowing to proceed: Rejected: %, SQL: %$INNER_BLOCK$, v_excluded_subcommands, v_ddl_sql_raw;
+              END IF;
+            END IF;
+          END LOOP;
+        END IF;
+
         v_ddl_sql_sent = v_ddl_sql_raw;
 
         --If there are BEGIN/COMMIT tags, attempt to strip and reparse
@@ -148,7 +195,8 @@ WITH vars AS
         */
         v_full_ddl:=$INNER_BLOCK$
         --Be sure to use provider's search_path for SQL environment consistency
-            SET SEARCH_PATH TO $INNER_BLOCK$||c_search_path||$INNER_BLOCK$;
+            SET SEARCH_PATH TO $INNER_BLOCK$||
+            CASE WHEN COALESCE(c_search_path,'') = '' THEN quote_literal('') ELSE c_search_path END||$INNER_BLOCK$;
 
             --Execute DDL - the reason we use execute here is partly to handle no trailing semicolon
             EXECUTE $EXEC_SUBSCRIBER$
