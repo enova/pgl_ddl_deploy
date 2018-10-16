@@ -40,6 +40,8 @@ add_file schema/1.4.sql $update_file
 
 # Add view and function changes
 add_file functions/rep_set_table_wrapper.sql $update_file
+add_file functions/deployment_check_wrapper.sql $update_file
+add_file functions/deployment_check.sql $update_file
 add_file functions/deployment_check_count.sql $update_file
 add_file views/event_trigger_schema.sql $update_file
 add_file functions/get_altertable_subcmdtypes.sql $update_file

@@ -39,6 +39,7 @@ https://innovation.enova.com/pursuing-postgres-ddl-replication/
 Summary of changes:
 
 * Feature: Allow filtering out ALTER TABLE by subcommand tags
+* Feature: Allow ddl-only replication to copy structure and not auto-add tables to replication.
 * Remove dependency_update function and implement more reliable dynamic `rep_set_table_wrapper` function
 * Allow `COMMENT` to be replicated with `include_only_repset_tables`
 * Add sequence for set_configs as an extension config

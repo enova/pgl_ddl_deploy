@@ -13,6 +13,7 @@ WITH vars AS
   include_only_repset_tables,
   create_tags,
   drop_tags,
+  ddl_only_replication,
 
   /****
   These constants in DECLARE portion of all functions is identical and can be shared
@@ -196,7 +197,7 @@ WITH vars AS
         v_full_ddl:=$INNER_BLOCK$
         --Be sure to use provider's search_path for SQL environment consistency
             SET SEARCH_PATH TO $INNER_BLOCK$||
-            CASE WHEN COALESCE(c_search_path,'') = '' THEN quote_literal('') ELSE c_search_path END||$INNER_BLOCK$;
+            CASE WHEN COALESCE(c_search_path,'') IN('','""') THEN quote_literal('') ELSE c_search_path END||$INNER_BLOCK$;
 
             --Execute DDL - the reason we use execute here is partly to handle no trailing semicolon
             EXECUTE $EXEC_SUBSCRIBER$
@@ -442,9 +443,11 @@ BEGIN
 
         /**
           Add table to replication set immediately, if required.
-          We do not filter to tags here, because of possibility of multi-statement SQL
+          We do not filter to tags here, because of possibility of multi-statement SQL.
+          Optional ddl_only_replication will never auto-add tables to replication because the
+          purpose is to only replicate keep the structure synchronized on the subscriber with no data.
         **/
-        IF NOT $BUILD$||include_only_repset_tables||$BUILD$ THEN
+        IF NOT $BUILD$||include_only_repset_tables||$BUILD$ AND NOT $BUILD$||ddl_only_replication||$BUILD$ THEN
           PERFORM pglogical.replication_set_add_table(
             set_name:=c_set_name
             ,relation:=c.oid

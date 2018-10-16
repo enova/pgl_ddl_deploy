@@ -14,3 +14,5 @@ ALTER TABLE pgl_ddl_deploy.set_configs ADD COLUMN exclude_alter_table_subcommand
 ALTER TABLE pgl_ddl_deploy.set_configs DROP CONSTRAINT repset_tables_only_alter_table;
 
 SELECT pg_catalog.pg_extension_config_dump('pgl_ddl_deploy.set_configs_id_seq', '');
+
+ALTER TABLE pgl_ddl_deploy.set_configs ADD COLUMN ddl_only_replication BOOLEAN NOT NULL DEFAULT FALSE;

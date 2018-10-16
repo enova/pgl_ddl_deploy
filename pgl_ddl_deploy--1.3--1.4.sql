@@ -20,6 +20,9 @@ ALTER TABLE pgl_ddl_deploy.set_configs DROP CONSTRAINT repset_tables_only_alter_
 
 SELECT pg_catalog.pg_extension_config_dump('pgl_ddl_deploy.set_configs_id_seq', '');
 
+ALTER TABLE pgl_ddl_deploy.set_configs ADD COLUMN ddl_only_replication BOOLEAN NOT NULL DEFAULT FALSE;
+
+
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.rep_set_table_wrapper()
  RETURNS TABLE (set_id OID, set_reloid REGCLASS)
  LANGUAGE plpgsql
@@ -47,6 +50,73 @@ END IF;
 END;
 $function$
 ;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.deployment_check_wrapper(p_set_config_id integer, p_set_name text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_count INT;
+  c_exclude_always TEXT = pgl_ddl_deploy.exclude_regex();
+  c_set_config_id INT;
+  c_include_schema_regex TEXT;
+  v_include_only_repset_tables BOOLEAN;
+  v_ddl_only_replication BOOLEAN;
+  c_set_name TEXT;
+BEGIN
+
+IF p_set_config_id IS NOT NULL AND p_set_name IS NOT NULL THEN
+    RAISE EXCEPTION 'This function can only be called with one of the two arguments set.';
+END IF;
+
+IF NOT EXISTS (SELECT 1 FROM pgl_ddl_deploy.set_configs WHERE ((p_set_name is null and id = p_set_config_id) OR (p_set_config_id is null and set_name = p_set_name))) THEN
+  RETURN FALSE;                                               
+END IF;
+
+/***
+  This check is only applicable to NON-include_only_repset_tables and sets using CREATE TABLE events.
+  It is also bypassed if ddl_only_replication is true in which we never auto-add tables to replication.
+  We re-assign set_config_id because we want to know if no records are found, leading to NULL
+*/
+SELECT id, include_schema_regex, set_name, include_only_repset_tables, ddl_only_replication
+INTO c_set_config_id, c_include_schema_regex, c_set_name, v_include_only_repset_tables, v_ddl_only_replication
+FROM pgl_ddl_deploy.set_configs
+WHERE ((p_set_name is null and id = p_set_config_id)
+  OR (p_set_config_id is null and set_name = p_set_name))
+  AND create_tags && '{"CREATE TABLE"}'::TEXT[];
+
+IF v_include_only_repset_tables OR v_ddl_only_replication THEN
+    RETURN TRUE;
+END IF;
+
+RETURN pgl_ddl_deploy.deployment_check_count(c_set_config_id, c_set_name, c_include_schema_regex);
+
+END;
+$function$;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.deployment_check(p_set_config_id integer)
+ RETURNS boolean
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+
+RETURN pgl_ddl_deploy.deployment_check_wrapper(p_set_config_id, NULL); 
+
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.deployment_check(p_set_name text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+
+RETURN pgl_ddl_deploy.deployment_check_wrapper(NULL, p_set_name); 
+
+END;
+$function$;
 
 
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.deployment_check_count(p_set_config_id integer, p_set_name text, p_include_schema_regex text)
@@ -135,6 +205,7 @@ WITH vars AS
   include_only_repset_tables,
   create_tags,
   drop_tags,
+  ddl_only_replication,
 
   /****
   These constants in DECLARE portion of all functions is identical and can be shared
@@ -318,7 +389,7 @@ WITH vars AS
         v_full_ddl:=$INNER_BLOCK$
         --Be sure to use provider's search_path for SQL environment consistency
             SET SEARCH_PATH TO $INNER_BLOCK$||
-            CASE WHEN COALESCE(c_search_path,'') = '' THEN quote_literal('') ELSE c_search_path END||$INNER_BLOCK$;
+            CASE WHEN COALESCE(c_search_path,'') IN('','""') THEN quote_literal('') ELSE c_search_path END||$INNER_BLOCK$;
 
             --Execute DDL - the reason we use execute here is partly to handle no trailing semicolon
             EXECUTE $EXEC_SUBSCRIBER$
@@ -564,9 +635,11 @@ BEGIN
 
         /**
           Add table to replication set immediately, if required.
-          We do not filter to tags here, because of possibility of multi-statement SQL
+          We do not filter to tags here, because of possibility of multi-statement SQL.
+          Optional ddl_only_replication will never auto-add tables to replication because the
+          purpose is to only replicate keep the structure synchronized on the subscriber with no data.
         **/
-        IF NOT $BUILD$||include_only_repset_tables||$BUILD$ THEN
+        IF NOT $BUILD$||include_only_repset_tables||$BUILD$ AND NOT $BUILD$||ddl_only_replication||$BUILD$ THEN
           PERFORM pglogical.replication_set_add_table(
             set_name:=c_set_name
             ,relation:=c.oid
