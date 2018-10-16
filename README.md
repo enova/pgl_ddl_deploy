@@ -658,6 +658,40 @@ SELECT pgl_ddl_deploy.retry_all_subscriber_logs();
 SELECT pgl_ddl_deploy.retry_subscriber_log(subscriber_log_id);
 ```
 
+When you retry subscriber logs, new rows are created for the retries, thus the rows
+with `succeeded = f` still remain.
+
+Queries like this are helpful:
+```sql
+SELECT id,
+  LEFT(ddl_sql, 30) AS sql,
+  origin_subscriber_log_id,
+  next_subscriber_log_id,
+  succeeded
+FROM pgl_ddl_deploy.subscriber_logs
+WHERE NOT succeeded;
+```
+
+Then to check retry:
+```sql
+WITH old AS (
+SELECT id,
+  LEFT(ddl_sql, 30) AS sql,
+  origin_subscriber_log_id,
+  next_subscriber_log_id,
+  succeeded
+FROM pgl_ddl_deploy.subscriber_logs
+WHERE NOT succeeded)
+
+SELECT id,
+  LEFT(ddl_sql, 30) AS sql,
+  origin_subscriber_log_id,
+  next_subscriber_log_id,
+  succeeded
+FROM pgl_ddl_deploy.subscriber_logs
+WHERE id IN (SELECT next_subscriber_log_id FROM old);
+```
+
 ## <a name="resolve_unhandled"></a>Resolving Unhandled DDL
 
 At present, an unhandled DDL deployment **may not break replication** by itself.
