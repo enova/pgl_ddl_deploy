@@ -51,6 +51,7 @@ add_file functions/standard_repset_only_tags.sql $update_file
 add_file functions/standard_create_tags.sql $update_file
 add_file functions/exclude_regex.sql $update_file
 add_file functions/common_exclude_alter_table_subcommands.sql $update_file
+add_file functions/unique_tags.sql $update_file
 
 # Add NEW table schema and extension config changes
 add_file schema/1.4_post.sql $update_file

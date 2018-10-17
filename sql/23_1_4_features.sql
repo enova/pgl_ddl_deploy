@@ -30,6 +30,10 @@ DROP TABLE repsets;
 INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex, ddl_only_replication)
 VALUES ('test_ddl_only','^super.*',true);
 
+-- It is now permitted to have multiple set_configs for same set_name if using ddl_only_replication
+INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex, ddl_only_replication)
+VALUES ('test_ddl_only','^duper.*',true);
+
 SET ROLE test_pgl_ddl_deploy;
 CREATE SCHEMA super;
 CREATE TABLE super.man(id serial primary key);
