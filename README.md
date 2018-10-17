@@ -38,11 +38,12 @@ https://innovation.enova.com/pursuing-postgres-ddl-replication/
 ### Release 1.4
 Summary of changes:
 
-* Feature: Allow filtering out ALTER TABLE by subcommand tags
-* Feature: Allow ddl-only replication to copy structure and not auto-add tables to replication.
-* Remove dependency_update function and implement more reliable dynamic `rep_set_table_wrapper` function
+* Feature: Allow filtering out ALTER TABLE statements by subcommand tags
+* Feature: Add `ddl_only_replication` option to allow copying structure and not auto-adding tables to replication.
+* Remove `dependency_update` function and implement more reliable dynamic `rep_set_table_wrapper` function
 * Allow `COMMENT` to be replicated with `include_only_repset_tables`
-* Add sequence for set_configs as an extension config
+* Add sequence for `set_configs` as an extension config
+* Refactored codebase with separated files for easier version control review
 
 ### Release 1.3
 Summary of changes:
@@ -115,7 +116,7 @@ extend this to work with any replication technology.
   developers needing to overhaul their migration process or know the intricacies
 of replication.
 
-- Tables will also be automatically added to replication upon creation.
+- Tables can be automatically added to replication upon creation (`include_schema_regex` option).
 
 - Filtering by schema (regular expression) is supported.  This allows you to
   selectively replicate only certain schemas within a replication set.
@@ -133,6 +134,10 @@ terminated.
 
 - In some edge cases, alerting can be built around provided logging for the DBA
   to then handle possible manual deployments
+  
+- `ALTER TABLE` statements can be filtered by subcommand tags.  For example, if you are using
+  selective replication and want to ignore things like `DISABLE TRIGGER` which may not exist
+  on the subscriber, this is useful to add robustness to DDL replication.
 
 ## <a name="full_example"></a>A Full Example
 
@@ -267,12 +272,7 @@ data.
 ## <a name="installation"></a>Installation
 
 The functionality of this requires postgres version 9.5+ and a working install
-of pglogical.  Packages will be available soon.  To build from source:
-```
-make
-make install
-make installcheck # run regression suite
-```
+of pglogical.
 
 DEB available on official PGDG repository as ```postgresql-${PGSQL_VERSION}-pgl-ddl-deploy```
 see installation instruction on https://wiki.postgresql.org/wiki/Apt
@@ -288,15 +288,7 @@ CREATE EXTENSION pgl_ddl_deploy;
 
 **This extension needs to be installed on provider and all subscribers.**
 
-**NOTE**: If you upgrade pglogical from version 1.* to 2.* while pgl_ddl_deploy
-is installed, you will need to re-run function
-`pgl_ddl_deploy.dependency_update()` to update pglogical-specific dependencies.
-If you indeed were to upgrade and do nothing, you will likely start to see
-`WARNING` level logs indicating a problem.  DDL statements should not fail
-because of the way we are allowing exceptions in this deployment framework to
-proceed with only a `WARNING` level log.
-
-# <a name="setup"></a>Setup and Deployment 
+# <a name="setup"></a>Setup and Deployment
 
 ## <a name="config"></a>Configuration
 
@@ -346,6 +338,14 @@ SQL statement with a single node `parsetree`) will be eligible for propagation.
 - `drop_tags`: the set of command tags for which the drop event triggers will fire.
   Change with caution.  These are defaulted to the appropriate default set
   for either `include_schema_regex` or `include_only_repset_tables`.
+- `exclude_alter_table_subcommands`: if you want to exclude certain `ALTER TABLE` subcommand tags,
+  here is the place to do it.  The standard list can be found as the function
+  `pgl_ddl_deploy.common_exclude_alter_table_subcommands()`.  You can also simply choose
+  only select tags from this list to exclude.
+- `ddl_only_replication`: for use with `include_schema_regex` only.  Allows you to
+  only replicate the schema without auto-adding tables to replication.  This is useful
+  in particular if you want to keep the structure of two systems fully synchronized, but
+  you don't necessarily want to replicate data for all tables.
 
 There is already a pattern of schemas excluded always that you need not worry
 about. You can view them in this function:
@@ -468,7 +468,8 @@ i.e.:
 ```sql
 SET SESSION_REPLICATION_ROLE TO REPLICA;
 
---I don't care to send this to subscribers
+-- I don't care to send this to subscribers (note that you can also exclude statements
+-- like this by using exclude_alter_table_subcommands)
 ALTER TABLE foo SET (autovacuum_vacuum_threshold = 1000);
 
 RESET SESSION_REPLICATION_ROLE;
@@ -526,6 +527,10 @@ framework will work best with these two use cases:
  - When you want to replicate all user tables
  - When you want to replicate only a subset of tables in a schema that will not
    have any foreign key dependencies to other schemas
+   
+Some of these edge cases can be minimized with the `exclude_alter_table_subcommands`
+option, which was developed precisely because for us, the most common failures were
+things like `DISABLE TRIGGER` for a trigger that does not exist on the subscriber.
 
 In this case, the DDL statement could fail on the subscriber.  To resolve this,
 see [Resolving Failed DDL on Subscribers](#resolving_failed).
@@ -749,7 +754,7 @@ I think we do, but lots of work would be required, and we would welcome those
 with more comfort in the parser code to help if interested.
 
 ## <a name="sql files"></a>SQL files
-To build the higher version SQL files (i.e. 1.1) from the lower versions +
+To build the higher version SQL files (i.e. 1.4) from the lower versions +
 the upgrade patch SQL files, run `pgl_ddl_deploy-sql-maker.sh`.
 
 ## <a name="regression"></a>Regression testing
