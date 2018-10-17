@@ -9,7 +9,7 @@ SELECT id, pgl_ddl_deploy.undeploy(id) AS undeployed
 FROM pgl_ddl_deploy.event_trigger_schema
 WHERE is_deployed;
 
-SELECT pgl_ddl_deploy.drop_ext_object('FUNCTION','pgl_ddl_deploy.dependency_update');
+SELECT pgl_ddl_deploy.drop_ext_object('FUNCTION','pgl_ddl_deploy.dependency_update()');
 DROP FUNCTION pgl_ddl_deploy.dependency_update();
 SELECT pgl_ddl_deploy.drop_ext_object('VIEW','pgl_ddl_deploy.rep_set_table_wrapper');
 DROP VIEW IF EXISTS pgl_ddl_deploy.rep_set_table_wrapper; 
