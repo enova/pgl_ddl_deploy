@@ -4,7 +4,7 @@ SET client_min_messages TO warning;
 In default schema
 **/
 CREATE TABLE foo(id serial primary key);
-SELECT * FROM check_rep_tables;
+SELECT * FROM check_rep_tables();
  set_name | table_name 
 ----------+------------
  test1    | foo
@@ -299,7 +299,7 @@ SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY i
 (10 rows)
 
 CREATE TABLE foobar.foo(id serial primary key);
-SELECT * FROM check_rep_tables;
+SELECT * FROM check_rep_tables();
  set_name | table_name 
 ----------+------------
  test1    | foobar.foo
@@ -560,7 +560,7 @@ SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY i
 (10 rows)
 
 DROP SCHEMA foobar CASCADE;
-SELECT * FROM check_rep_tables;
+SELECT * FROM check_rep_tables();
  set_name | table_name 
 ----------+------------
 (0 rows)

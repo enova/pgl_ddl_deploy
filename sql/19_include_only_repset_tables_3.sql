@@ -25,7 +25,3 @@ FROM pgl_ddl_deploy.events e
 INNER JOIN pgl_ddl_deploy.set_configs c ON c.id = e.set_config_id
 WHERE c.set_name LIKE 'my_special_tables%' ORDER BY e.id DESC LIMIT 20;
 
---None of these appear in special tables replication events
-DROP TABLE special.fooz CASCADE;
-DROP TABLE special.barz CASCADE;
-DROP SCHEMA special;

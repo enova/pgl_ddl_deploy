@@ -17,7 +17,7 @@ ORDER BY e.id DESC LIMIT 4;
                                                                                                               |          | SELECT * FROM viewer.foo;                    | SELECT * FROM viewer.foo;
  {"ALTER TABLE","CREATE SEQUENCE","ALTER SEQUENCE","CREATE SCHEMA","CREATE TABLE","CREATE TYPE","ALTER TYPE"} | test1    | CREATE TABLE viewer.foo(id int primary key); | CREATE TABLE viewer.foo(id int primary key);
  {"ALTER TABLE","CREATE SEQUENCE","ALTER SEQUENCE","CREATE SCHEMA","CREATE TABLE","CREATE TYPE","ALTER TYPE"} | test1    | CREATE SCHEMA viewer;                        | CREATE SCHEMA viewer;
- {"ALTER TABLE","CREATE SEQUENCE","ALTER SEQUENCE","CREATE SCHEMA","CREATE TABLE","CREATE TYPE","ALTER TYPE"} | test1    | DROP VIEW IF EXISTS check_rep_tables;        | DROP VIEW IF EXISTS check_rep_tables;
+ {"ALTER TABLE","CREATE SEQUENCE","ALTER SEQUENCE","CREATE SCHEMA","CREATE TABLE","CREATE TYPE","ALTER TYPE"} | test1    | DROP TABLE foobar.foo CASCADE;               | DROP TABLE foobar.foo CASCADE;
 (4 rows)
 
 DROP VIEW viewer.vw_foo;

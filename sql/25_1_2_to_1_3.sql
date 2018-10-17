@@ -90,7 +90,7 @@ SELECT
 FROM pre_ext_update
 ORDER BY auto_replication_create_function_name;
 
-ALTER EXTENSION pgl_ddl_deploy UPDATE;
+ALTER EXTENSION pgl_ddl_deploy UPDATE TO '1.3';
 
 --Show diff
 SELECT 'changed_record' as result,

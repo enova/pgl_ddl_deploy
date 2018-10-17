@@ -108,7 +108,7 @@ ORDER BY auto_replication_create_function_name;
  f                          | pgl_ddl_deploy.auto_rep_ddl_create_3_testspecial         | t           | CREATE OR REPLACE FUNCTION pgl
 (5 rows)
 
-ALTER EXTENSION pgl_ddl_deploy UPDATE;
+ALTER EXTENSION pgl_ddl_deploy UPDATE TO '1.3';
 --Show diff
 SELECT 'changed_record' as result,
     include_only_repset_tables,

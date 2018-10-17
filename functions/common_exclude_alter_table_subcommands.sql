@@ -1,0 +1,35 @@
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.common_exclude_alter_table_subcommands()
+RETURNS TEXT[] AS
+$BODY$
+SELECT ARRAY[
+  'ADD CONSTRAINT',
+  'ADD CONSTRAINT (and recurse)',
+  '(re) ADD CONSTRAINT',
+  'ALTER CONSTRAINT',
+  'VALIDATE CONSTRAINT',
+  'VALIDATE CONSTRAINT (and recurse)',
+  'ADD (processed) CONSTRAINT',
+  'ADD CONSTRAINT (using index)',
+  'DROP CONSTRAINT',
+  'DROP CONSTRAINT (and recurse)',
+  'SET LOGGED',
+  'SET UNLOGGED',
+  'SET TABLESPACE',
+  'SET RELOPTIONS',
+  'RESET RELOPTIONS',
+  'REPLACE RELOPTIONS',
+  'ENABLE TRIGGER',
+  'ENABLE TRIGGER (always)',
+  'ENABLE TRIGGER (replica)',
+  'DISABLE TRIGGER',
+  'ENABLE TRIGGER (all)',
+  'DISABLE TRIGGER (all)',
+  'ENABLE TRIGGER (user)',
+  'DISABLE TRIGGER (user)',
+  'ENABLE RULE',
+  'ENABLE RULE (always)',
+  'ENABLE RULE (replica)',
+  'DISABLE RULE',
+  'SET OPTIONS']::TEXT[];
+$BODY$
+LANGUAGE SQL IMMUTABLE;
