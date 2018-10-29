@@ -1,3 +1,12 @@
+pgl-ddl-deploy (1.4.0-2) unstable; urgency=medium
+
+  * Team upload.
+  * debian/control(.in): Add Vcs-Browser, bump Standards-Version, and
+    update for PostgreSQL 11.
+  * debian/tests/control: Tests require user "postgres", so run as root.
+
+ -- Christoph Berg <christoph.berg@credativ.de>  Mon, 29 Oct 2018 12:37:19 +0100
+
 pgl-ddl-deploy (1.4.0-1) unstable; urgency=medium
 
   * Support ddl-only replication and alter table subcommand filtering 
