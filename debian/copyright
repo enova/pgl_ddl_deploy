@@ -5,7 +5,6 @@ Source: https://github.com/enova/pgl_ddl_deploy
 Files: *
 Copyright: 2017-2018 Enova International, Inc. <opensource@enova.com>
            2017-2018 Jeremy Finzel <jfinzel@enova.com>
-
 License: MIT
  Permission is hereby granted, free of charge, to any person obtaining a copy of
  this software and associated documentation files (the "Software"), to deal in
