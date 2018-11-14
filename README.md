@@ -76,7 +76,7 @@ new tables, alter tables, and the like, we have to manage this separately in our
 application deployment process in order to make those same changes on logical
 replicas, and add such tables to replication.
 
-As of Postgres 10.0, there is no native way to do "transparent DDL replication"
+As of Postgres 11, there is no native way to do "transparent DDL replication"
 to other Postgres clusters alongside any logical replication technology, built
 on standard Postgres.
 
@@ -142,7 +142,7 @@ terminated.
 ## <a name="full_example"></a>A Full Example
 
 Since we always look for documentation by example, we show this first.  Assuming
-pglogical is already setup, and given these replication sets:
+pglogical is already setup with an active subscription, and given these replication sets:
 - `default` - replicate every event
 - `insert_update` - replicate only inserts and updates
 
