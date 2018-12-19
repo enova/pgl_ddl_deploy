@@ -1,3 +1,90 @@
+/* pgl_ddl_deploy--1.4--1.5.sql */
+
+-- complain if script is sourced in psql, rather than via CREATE EXTENSION
+\echo Use "CREATE EXTENSION pgl_ddl_deploy" to load this file. \quit
+
+ALTER TABLE pgl_ddl_deploy.set_configs
+  ADD COLUMN include_everything
+  BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Now we have 3 configuration types
+ALTER TABLE pgl_ddl_deploy.set_configs
+  DROP CONSTRAINT repset_tables_or_regex_inclusion;
+
+-- Only allow one of them to be chosen
+ALTER TABLE pgl_ddl_deploy.set_configs
+  ADD CONSTRAINT single_configuration_type
+  CHECK
+  ((include_schema_regex IS NOT NULL
+   AND NOT include_only_repset_tables)
+   OR
+   (include_only_repset_tables
+    AND include_schema_regex IS NULL)
+   OR
+   (include_everything
+    AND NOT include_only_repset_tables
+    AND include_schema_regex IS NULL));
+
+ALTER TABLE pgl_ddl_deploy.set_configs
+  ADD CONSTRAINT ddl_only_restrictions
+  CHECK (NOT (ddl_only_replication AND include_only_repset_tables)); 
+
+-- Need to adjust to after trigger and change function def 
+DROP TRIGGER unique_tags ON pgl_ddl_deploy.set_configs;
+DROP FUNCTION pgl_ddl_deploy.unique_tags();
+
+-- We need to add the column include_everything to it in a nice order
+DROP VIEW pgl_ddl_deploy.event_trigger_schema;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.unique_tags()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_output TEXT;
+BEGIN
+    WITH dupes AS (
+    SELECT set_name,
+        CASE
+            WHEN include_only_repset_tables THEN 'include_only_repset_tables'
+            WHEN include_everything AND NOT ddl_only_replication THEN 'include_everything'
+            WHEN include_schema_regex IS NOT NULL AND NOT ddl_only_replication THEN 'include_schema_regex'
+            WHEN ddl_only_replication THEN
+                CASE
+                    WHEN include_everything THEN 'ddl_only_include_everything'
+                    WHEN include_schema_regex IS NOT NULL THEN 'ddl_only_include_schema_regex'
+                END
+        END AS category,
+    unnest(array_cat(create_tags, drop_tags)) AS command_tag
+    FROM pgl_ddl_deploy.set_configs
+    GROUP BY 1, 2, 3
+    HAVING COUNT(1) > 1)
+
+    , aggregate_dupe_tags AS (
+    SELECT set_name, category, string_agg(command_tag, ', ' ORDER BY command_tag) AS command_tags
+    FROM dupes
+    GROUP BY 1, 2
+    )
+
+    SELECT string_agg(format('%s: %s: %s', set_name, category, command_tags), ', ') AS output
+    INTO v_output
+    FROM aggregate_dupe_tags;
+
+    IF v_output IS NOT NULL THEN
+        RAISE EXCEPTION '%', format('You have overlapping configuration types and command tags which is not permitted: %s', v_output);
+    END IF;
+    RETURN NULL;
+END;
+$function$
+;
+
+
+CREATE TRIGGER unique_tags
+AFTER INSERT OR UPDATE ON pgl_ddl_deploy.set_configs
+FOR EACH ROW EXECUTE PROCEDURE pgl_ddl_deploy.unique_tags();
+
+
 CREATE OR REPLACE VIEW pgl_ddl_deploy.event_trigger_schema AS
 WITH vars AS
 (SELECT
@@ -694,3 +781,5 @@ SELECT
         AND evtenabled IN('O','R','A')
     ) AS is_deployed
 FROM build b;
+
+

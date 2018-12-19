@@ -3,10 +3,7 @@ SET client_min_messages = warning;
 --This should fail due to overlapping tags
 INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex, lock_safe_deployment, allow_multi_statements, include_only_repset_tables, create_tags, drop_tags)
 SELECT 'test1', '.*', TRUE, TRUE, FALSE, '{"CREATE VIEW","ALTER VIEW","CREATE FUNCTION","ALTER FUNCTION"}', '{"DROP VIEW","DROP FUNCTION"}';
-ERROR:  Another set_config already exists for 'test1' with overlapping create_tags or drop_tags.
-    Command tags must only appear once per set_name even if using multiple set_configs, unless you
-    are using the ddl_only_replication setting.
-    
+ERROR:  You have overlapping configuration types and command tags which is not permitted: test1: include_schema_regex: ALTER FUNCTION, ALTER VIEW, CREATE FUNCTION, CREATE VIEW, DROP FUNCTION, DROP VIEW
 --But if we drop these tags from test1, it should work
 UPDATE pgl_ddl_deploy.set_configs
 SET create_tags = '{ALTER TABLE,CREATE SEQUENCE,ALTER SEQUENCE,CREATE SCHEMA,CREATE TABLE,CREATE TYPE,ALTER TYPE}',

@@ -35,6 +35,11 @@ https://innovation.enova.com/pursuing-postgres-ddl-replication/
 
 # <a name="release_notes"></a>Release Notes
 
+### Release 1.5
+Summary of changes:
+* Add support for including every object without restriction in DDL for events like `GRANT`
+which do not provide access to the objects being modified.
+
 ### Release 1.4
 Summary of changes:
 
@@ -295,6 +300,21 @@ CREATE EXTENSION pgl_ddl_deploy;
 DDL replication is configured on a per-replication set basis, in terms of
 `pglogical.replication_set`.
 
+There are three basic types of configuration:
+  - `include_only_repset_tables` - Only tables already in a replication set
+  are maintained.  This means only `ALTER TABLE` or `COMMENT` statements are replicated.
+  - `include_schema_regex` - Provide a regular expression to match both current
+  and future schemas to be automatically added to replication.  This supports all event
+  types except for ones like `GRANT` which do not provide access to information about
+  which schema an object exists in.
+  - `include_everything` - Propagate all DDL events regardless of schema.  This is for cases
+  like `GRANT` which do not provide access to information about which schema an object exists in
+  
+The above 3 options are mutually exclusive.  You can, however, use an additional
+option `ddl_only_replication` either with `include_schema_regex` or `include_everything`. This
+only means tables are not automatically added to replication.  Its use is if you want to keep the
+schema of two systems in sync, but not necessarily replicate data for all tables.
+
 Add rows to `pgl_ddl_deploy.set_configs` in order to configure (but not yet
 deploy) DDL replication for a particular replication set.  For example:
 ```sql
@@ -346,6 +366,8 @@ SQL statement with a single node `parsetree`) will be eligible for propagation.
   only replicate the schema without auto-adding tables to replication.  This is useful
   in particular if you want to keep the structure of two systems fully synchronized, but
   you don't necessarily want to replicate data for all tables.
+- `include_everything`: Propagate all DDL events regardless of schema.  This is for cases
+  like `GRANT` which do not provide access to information about which schema an object exists in.
 
 There is already a pattern of schemas excluded always that you need not worry
 about. You can view them in this function:
@@ -375,8 +397,8 @@ ORDER BY n.nspname;
 ```
 
 There are no stored procedures to insert/update `set_configs`, which we don't
-think would add much value at this point.  There is a check constraint in place
-to ensure the regex is valid.
+think would add much value at this point.  There are check constraints and triggers in place
+to ensure the regex is valid and the other conditions of uniqueness are met for config options.
 
 ## <a name="permissions"></a>Permissions
 
@@ -770,7 +792,7 @@ As with any Postgres extension:
 make install
 make installcheck
 
-# There is support for testing both 1.1 and the upgraded path from 1.0 to 1.1
-FROMVERSION=1.0 make installcheck   # Test from 1.0 upgrade to 1.1
-FROMVERSION=1.1 make installcheck
+# There is support for testing both 1.4 and the upgraded path from 1.4 to 1.5
+FROMVERSION=1.4 make installcheck   # Test from 1.4 upgrade to 1.5
+FROMVERSION=1.5 make installcheck
 ```
