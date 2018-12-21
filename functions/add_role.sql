@@ -22,6 +22,7 @@ BEGIN
     GRANT EXECUTE ON FUNCTION pglogical.replicate_ddl_command(text, text[]) TO '||v_rec.rolname||';
     GRANT EXECUTE ON FUNCTION pglogical.replication_set_add_table(name, regclass, boolean, text[], text) TO '||v_rec.rolname||';
     GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.sql_command_tags(text) TO '||v_rec.rolname||';
+    GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.kill_blockers(pgl_ddl_deploy.signals, name, name) TO '||v_rec.rolname||';
     GRANT INSERT, UPDATE, SELECT ON ALL TABLES IN SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
     GRANT USAGE ON ALL SEQUENCES IN SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
     GRANT SELECT ON ALL TABLES IN SCHEMA pglogical TO '||v_rec.rolname||';';

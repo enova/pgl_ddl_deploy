@@ -36,6 +36,29 @@ DROP FUNCTION pgl_ddl_deploy.unique_tags();
 -- We need to add the column include_everything to it in a nice order
 DROP VIEW pgl_ddl_deploy.event_trigger_schema;
 
+-- Support canceling or terminating blocking processes on subscriber
+CREATE TYPE pgl_ddl_deploy.signals AS ENUM ('cancel','terminate');
+ALTER TABLE pgl_ddl_deploy.set_configs
+  ADD COLUMN signal_blocking_subscriber_sessions pgl_ddl_deploy.signals;
+ALTER TABLE pgl_ddl_deploy.set_configs
+  ADD COLUMN subscriber_lock_timeout INTERVAL;
+
+CREATE TABLE pgl_ddl_deploy.killed_blockers
+(
+  id           SERIAL PRIMARY KEY,
+  signal       TEXT,
+  successful   BOOLEAN,
+  pid          INT,
+  executed_at  TIMESTAMPTZ,
+  usename      NAME,
+  client_addr  INET,
+  xact_start   TIMESTAMPTZ,
+  state_change TIMESTAMPTZ,
+  state        TEXT,
+  query        TEXT,
+  reported     BOOLEAN DEFAULT FALSE
+);
+
 
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.unique_tags()
  RETURNS trigger
@@ -85,6 +108,105 @@ AFTER INSERT OR UPDATE ON pgl_ddl_deploy.set_configs
 FOR EACH ROW EXECUTE PROCEDURE pgl_ddl_deploy.unique_tags();
 
 
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.kill_blockers
+(p_signal_blocking_subscriber_sessions pgl_ddl_deploy.signals,
+p_nspname NAME,
+p_relname NAME)
+RETURNS TABLE (
+signal       pgl_ddl_deploy.signals,
+successful   BOOLEAN,
+pid          INT,
+executed_at  TIMESTAMPTZ,
+usename      NAME,
+client_addr  INET,
+xact_start   TIMESTAMPTZ,
+state_change TIMESTAMPTZ,
+state        TEXT,
+query        TEXT,
+reported     BOOLEAN
+)
+AS
+$BODY$
+BEGIN
+
+RETURN QUERY
+SELECT COALESCE(p_signal_blocking_subscriber_sessions,'cancel') AS signal,
+  CASE
+    WHEN p_signal_blocking_subscriber_sessions IS NULL
+      THEN FALSE
+    WHEN p_signal_blocking_subscriber_sessions = 'cancel'
+      THEN pg_cancel_backend(l.pid)
+    WHEN p_signal_blocking_subscriber_sessions = 'terminate'
+      THEN pg_terminate_backend(l.pid)
+  END AS successful,
+  l.pid,
+  now() AS executed_at,
+  a.usename,
+  a.client_addr,
+  a.xact_start,
+  a.state_change,
+  a.state,
+  a.query,
+  FALSE AS reported
+FROM pg_locks l
+INNER JOIN pg_class c on l.relation = c.oid
+INNER JOIN pg_namespace n on c.relnamespace = n.oid
+INNER JOIN pg_stat_activity a on l.pid = a.pid
+WHERE NOT a.pid = pg_backend_pid()
+-- both nspname and relname will be an empty string, thus a no-op, if for some reason one or the other
+-- is not found on the provider side in pg_event_trigger_ddl_commands().  This is a safety mechanism!
+AND n.nspname = p_nspname
+AND c.relname = p_relname
+AND a.datname = current_database()
+AND c.relkind = 'r'
+AND l.locktype = 'relation';
+
+END;
+$BODY$
+SECURITY DEFINER
+LANGUAGE plpgsql VOLATILE;
+
+REVOKE EXECUTE ON FUNCTION pgl_ddl_deploy.kill_blockers FROM PUBLIC;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.add_role(p_roleoid oid)
+ RETURNS boolean
+ LANGUAGE plpgsql
+AS $function$
+/******
+Assuming roles doing DDL are not superusers, this function grants needed privileges
+to run through the pgl_ddl_deploy DDL deployment.
+This needs to be run on BOTH provider and subscriber.
+******/
+DECLARE
+    v_rec RECORD;
+    v_sql TEXT;
+BEGIN
+
+    FOR v_rec IN
+        SELECT quote_ident(rolname) AS rolname FROM pg_roles WHERE oid = p_roleoid
+    LOOP
+
+    v_sql:='
+    GRANT USAGE ON SCHEMA pglogical TO '||v_rec.rolname||';
+    GRANT USAGE ON SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
+    GRANT EXECUTE ON FUNCTION pglogical.replicate_ddl_command(text, text[]) TO '||v_rec.rolname||';
+    GRANT EXECUTE ON FUNCTION pglogical.replication_set_add_table(name, regclass, boolean, text[], text) TO '||v_rec.rolname||';
+    GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.sql_command_tags(text) TO '||v_rec.rolname||';
+    GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.kill_blockers(pgl_ddl_deploy.signals, name, name) TO '||v_rec.rolname||';
+    GRANT INSERT, UPDATE, SELECT ON ALL TABLES IN SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
+    GRANT USAGE ON ALL SEQUENCES IN SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
+    GRANT SELECT ON ALL TABLES IN SCHEMA pglogical TO '||v_rec.rolname||';';
+
+    EXECUTE v_sql;
+    RETURN true;
+    END LOOP;
+RETURN false;
+END;
+$function$
+;
+
+
 CREATE OR REPLACE VIEW pgl_ddl_deploy.event_trigger_schema AS
 WITH vars AS
 (SELECT
@@ -102,6 +224,8 @@ WITH vars AS
   drop_tags,
   ddl_only_replication,
   include_everything,
+  signal_blocking_subscriber_sessions,
+  subscriber_lock_timeout,
 
   /****
   These constants in DECLARE portion of all functions is identical and can be shared
@@ -131,6 +255,12 @@ WITH vars AS
   v_sql TEXT;
   v_cmd_count INT;
   v_match_count INT;
+  v_exclude_always_match_count INT;
+  v_nspname TEXT;
+  v_relname TEXT;
+  v_error TEXT;
+  v_error_detail TEXT;
+  v_context TEXT;
   v_excluded_count INT;
   c_exclude_always TEXT = pgl_ddl_deploy.exclude_regex();
   c_exception_msg TEXT = 'Deployment exception logged in pgl_ddl_deploy.exceptions';
@@ -146,6 +276,8 @@ WITH vars AS
   c_queue_subscriber_failures BOOLEAN = $BUILD$||queue_subscriber_failures||$BUILD$;
   c_blacklisted_tags TEXT[] = '$BUILD$||blacklisted_tags::TEXT||$BUILD$';
   c_exclude_alter_table_subcommands TEXT[] = $BUILD$||COALESCE(quote_literal(exclude_alter_table_subcommands::TEXT),'NULL')||$BUILD$;
+  c_signal_blocking_subscriber_sessions TEXT = $BUILD$||COALESCE(quote_literal(signal_blocking_subscriber_sessions::TEXT),'NULL')||$BUILD$;
+  c_subscriber_lock_timeout INTERVAL = $BUILD$||COALESCE(quote_literal(subscriber_lock_timeout::TEXT),'NULL')||$BUILD$;
 
     --Constants based on configuration
   c_exec_prefix TEXT =(CASE
@@ -163,7 +295,7 @@ WITH vars AS
   $BUILD$
   --If there are any matches to our replication config, get the query
   --This will either be sent, or logged at this point if not deployable
-  IF c_include_everything OR v_match_count > 0 THEN
+  IF (c_include_everything AND v_exclude_always_match_count = 0) OR v_match_count > 0 THEN
         v_ddl_sql_raw = current_query();
         v_txid = txid_current();
   END IF;
@@ -299,6 +431,7 @@ WITH vars AS
         DO $AUTO_REPLICATE_BLOCK$
         DECLARE
           c_queue_subscriber_failures BOOLEAN = $INNER_BLOCK$||c_queue_subscriber_failures||$INNER_BLOCK$;
+          c_signal_blocking_subscriber_sessions TEXT = $INNER_BLOCK$||COALESCE(quote_literal(c_signal_blocking_subscriber_sessions),'NULL')||$INNER_BLOCK$;
           v_succeeded BOOLEAN;
           v_error_message TEXT;
         BEGIN
@@ -312,23 +445,70 @@ WITH vars AS
                       WHERE sub_replication_sets && ARRAY['$INNER_BLOCK$||c_set_name||$INNER_BLOCK$']) THEN
 
             v_error_message = NULL;
+            WHILE TRUE LOOP
+            IF c_signal_blocking_subscriber_sessions IS NOT NULL THEN
+            -- We cannot RESET LOCAL lock_timeout but that should not be necessary because it will end with the transaction
+              SET LOCAL lock_timeout TO $INNER_BLOCK$||quote_literal(COALESCE(c_subscriber_lock_timeout::TEXT, '3s'::TEXT))||$INNER_BLOCK$;
+            END IF;
             BEGIN
 
              --Execute DDL
              $INNER_BLOCK$||v_full_ddl||$INNER_BLOCK$
 
              v_succeeded = TRUE;
+             EXIT;
 
             EXCEPTION
+              WHEN lock_not_available THEN
+                IF c_signal_blocking_subscriber_sessions IS NOT NULL THEN
+                  INSERT INTO pgl_ddl_deploy.killed_blockers
+                    (signal,
+                    successful,
+                    pid,
+                    executed_at,
+                    usename,
+                    client_addr,
+                    xact_start,
+                    state_change,
+                    state,
+                    query,
+                    reported)
+                  SELECT
+                    signal,
+                    successful,
+                    pid,
+                    executed_at,
+                    usename,
+                    client_addr,
+                    xact_start,
+                    state_change,
+                    state,
+                    query,
+                    reported
+                  FROM pgl_ddl_deploy.kill_blockers(
+                    c_signal_blocking_subscriber_sessions,
+                    $INNER_BLOCK$||COALESCE(quote_literal(v_nspname), 'NULL')::TEXT||$INNER_BLOCK$,
+                    $INNER_BLOCK$||COALESCE(quote_literal(v_relname), 'NULL')::TEXT||$INNER_BLOCK$
+                  );
+
+                  -- Continue and retry again but allow a brief pause
+                  PERFORM pg_sleep(3);
+                ELSE
+                  -- If c_signal_blocking_subscriber_sessions is not configured but we hit a lock_timeout,
+                  -- then the replication user or cluster is configured with a global lock_timeout.  Raise in this case.
+                  RAISE;
+                END IF;
               WHEN OTHERS THEN
                 IF c_queue_subscriber_failures THEN
                   RAISE WARNING 'Subscriber DDL failed with errors (see pgl_ddl_deploy.subscriber_logs): %', SQLERRM;
                   v_succeeded = FALSE;
                   v_error_message = SQLERRM;
+                  EXIT;
                 ELSE
                   RAISE;
                 END IF;
             END;
+            END LOOP;
 
             INSERT INTO pgl_ddl_deploy.subscriber_logs
             (set_name,
@@ -362,7 +542,8 @@ WITH vars AS
         --Pipe this DDL command through chosen replication set
         ARRAY['$INNER_BLOCK$||c_set_name||$INNER_BLOCK$']);
         $INNER_BLOCK$;
-
+        
+        RAISE DEBUG '%', v_sql;
         EXECUTE v_sql;
 
         INSERT INTO pgl_ddl_deploy.events
@@ -400,9 +581,10 @@ WITH vars AS
     As a safeguard, if even the exception handler fails, exit cleanly but add a server log message
   **/
   EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_context = PG_EXCEPTION_CONTEXT, v_error = MESSAGE_TEXT, v_error_detail = PG_EXCEPTION_DETAIL;
     BEGIN
       INSERT INTO pgl_ddl_deploy.exceptions (set_config_id, set_name, pid, executed_at, ddl_sql, err_msg, err_state)
-      VALUES (c_set_config_id, c_set_name, v_pid, current_timestamp, v_sql, SQLERRM, SQLSTATE);
+      VALUES (c_set_config_id, c_set_name, v_pid, current_timestamp, v_sql, v_error||v_context, SQLSTATE);
       RAISE WARNING '%', c_exception_msg;
     --No matter what, don't let this function block any DDL
     EXCEPTION WHEN OTHERS THEN
@@ -460,7 +642,21 @@ WITH vars AS
               )
             )
             THEN 1
-          ELSE 0 END) AS match_count
+          ELSE 0 END) AS match_count,
+      SUM(CASE
+          WHEN
+          --include_everything usage still excludes exclude_always regex:
+            (
+              ($BUILD$||include_everything||$BUILD$) AND
+              (
+                (schema_name ~* c_exclude_always)
+                OR
+                (object_type = 'schema'
+                AND object_identity ~* c_exclude_always)
+              )
+            )
+            THEN 1
+          ELSE 0 END) AS exclude_always_match_count
   $BUILD$::TEXT AS shared_match_count
 FROM pglogical.replication_set rs
 INNER JOIN pgl_ddl_deploy.set_configs sc USING (set_name)
@@ -473,6 +669,8 @@ SELECT
   include_schema_regex,
   include_only_repset_tables,
   include_everything,
+  signal_blocking_subscriber_sessions,
+  subscriber_lock_timeout,
   auto_replication_create_function_name,
   auto_replication_drop_function_name,
   auto_replication_unsupported_function_name,
@@ -492,16 +690,24 @@ BEGIN
   /*****
   Only enter execution body if object being altered is relevant
    */
-  IF NOT c_include_everything THEN
-      SELECT COUNT(1)
-        , $BUILD$||shared_match_count||$BUILD$
-        INTO v_cmd_count, v_match_count
-      FROM pg_event_trigger_ddl_commands() c;
-  END IF;
+  SELECT COUNT(1)
+    , $BUILD$||shared_match_count||$BUILD$
+    , MAX(c.schema_name)
+    , MAX(cl.relname)
+    INTO v_cmd_count, v_match_count, v_exclude_always_match_count, v_nspname, v_relname
+  FROM pg_event_trigger_ddl_commands() c
+  LEFT JOIN LATERAL
+    (SELECT cl.relname
+     FROM pg_class cl
+     WHERE cl.oid = c.objid
+       AND c.classid = (SELECT oid FROM pg_class WHERE relname = 'pg_class')
+    -- There should only be one table modified per event trigger
+    -- At least that's the best we will do now
+     LIMIT 1) cl ON TRUE;
 
       $BUILD$||shared_get_query||$BUILD$
 
-  IF (c_include_everything OR (v_match_count > 0 AND v_cmd_count = v_match_count))
+  IF ((c_include_everything AND v_exclude_always_match_count = 0) OR (v_match_count > 0 AND v_cmd_count = v_match_count))
       THEN
 
         $BUILD$||shared_deploy_logic||$BUILD$
@@ -571,33 +777,31 @@ BEGIN
   /*****
   Only enter execution body if object being altered is relevant
    */
-  IF NOT c_include_everything THEN
-      SELECT COUNT(1)
-        , $BUILD$||shared_match_count||$BUILD$
-        , SUM(CASE
-              WHEN
-              --include_schema_regex usage:
-                (
-                  (NOT $BUILD$||include_only_repset_tables||$BUILD$) AND
-                  (
-                    (schema_name !~* '^(pg_catalog|pg_toast)$'
-                    AND schema_name !~* c_include_schema_regex)
-                    OR (object_type = 'schema'
-                    AND object_identity !~* '^(pg_catalog|pg_toast)$'
-                    AND object_identity !~* c_include_schema_regex)
-                  )
-                )
-              --include_only_repset_tables cannot be used with DROP because
-              --the objects no longer exist to be checked:
-                THEN 1
-              ELSE 0 END) AS excluded_count
-        INTO v_cmd_count, v_match_count, v_excluded_count
-      FROM pg_event_trigger_dropped_objects() c;
-  END IF;
+  SELECT COUNT(1)
+    , $BUILD$||shared_match_count||$BUILD$
+    , SUM(CASE
+          WHEN
+          --include_schema_regex usage:
+            (
+              (NOT $BUILD$||include_only_repset_tables||$BUILD$) AND
+              (
+                (schema_name !~* '^(pg_catalog|pg_toast)$'
+                AND schema_name !~* c_include_schema_regex)
+                OR (object_type = 'schema'
+                AND object_identity !~* '^(pg_catalog|pg_toast)$'
+                AND object_identity !~* c_include_schema_regex)
+              )
+            )
+          --include_only_repset_tables cannot be used with DROP because
+          --the objects no longer exist to be checked:
+            THEN 1
+          ELSE 0 END) AS excluded_count
+    INTO v_cmd_count, v_match_count, v_exclude_always_match_count, v_excluded_count
+  FROM pg_event_trigger_dropped_objects() c;
 
   $BUILD$||shared_get_query||$BUILD$
 
-  IF (c_include_everything OR (v_match_count > 0 AND v_excluded_count = 0))
+  IF ((c_include_everything AND v_exclude_always_match_count = 0) OR (v_match_count > 0 AND v_excluded_count = 0))
 
       THEN
 
@@ -654,14 +858,12 @@ BEGIN
  /*****
   Only enter execution body if object being altered is relevant
    */
-  IF NOT c_include_everything THEN
-      SELECT COUNT(1)
-        , $BUILD$||shared_match_count||$BUILD$
-        INTO v_cmd_count, v_match_count
-      FROM pg_event_trigger_ddl_commands() c;
-  END IF;
+  SELECT COUNT(1)
+    , $BUILD$||shared_match_count||$BUILD$
+    INTO v_cmd_count, v_match_count, v_exclude_always_match_count
+  FROM pg_event_trigger_ddl_commands() c;
 
-  IF c_include_everything OR v_match_count > 0
+  IF ((c_include_everything AND v_exclude_always_match_count = 0) OR v_match_count > 0)
     THEN
 
     v_ddl_sql_raw = current_query();
@@ -738,6 +940,8 @@ SELECT
   b.include_schema_regex,
   b.include_only_repset_tables,
   b.include_everything,
+  b.signal_blocking_subscriber_sessions,
+  b.subscriber_lock_timeout,
   b.auto_replication_create_function_name,
   b.auto_replication_drop_function_name,
   b.auto_replication_unsupported_function_name,

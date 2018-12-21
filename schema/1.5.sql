@@ -30,3 +30,26 @@ DROP FUNCTION pgl_ddl_deploy.unique_tags();
 
 -- We need to add the column include_everything to it in a nice order
 DROP VIEW pgl_ddl_deploy.event_trigger_schema;
+
+-- Support canceling or terminating blocking processes on subscriber
+CREATE TYPE pgl_ddl_deploy.signals AS ENUM ('cancel','terminate');
+ALTER TABLE pgl_ddl_deploy.set_configs
+  ADD COLUMN signal_blocking_subscriber_sessions pgl_ddl_deploy.signals;
+ALTER TABLE pgl_ddl_deploy.set_configs
+  ADD COLUMN subscriber_lock_timeout INTERVAL;
+
+CREATE TABLE pgl_ddl_deploy.killed_blockers
+(
+  id           SERIAL PRIMARY KEY,
+  signal       TEXT,
+  successful   BOOLEAN,
+  pid          INT,
+  executed_at  TIMESTAMPTZ,
+  usename      NAME,
+  client_addr  INET,
+  xact_start   TIMESTAMPTZ,
+  state_change TIMESTAMPTZ,
+  state        TEXT,
+  query        TEXT,
+  reported     BOOLEAN DEFAULT FALSE
+);
