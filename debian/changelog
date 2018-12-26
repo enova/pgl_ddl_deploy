@@ -1,3 +1,9 @@
+pgl-ddl-deploy (1.5.0-1) unstable; urgency=medium
+
+  * Support more commands and allow kill blocking subscriber processes 
+
+ -- Jeremy Finzel <jfinzel@enova.com>  Wed, 26 Dec 2018 14:45:07 -0600 
+
 pgl-ddl-deploy (1.4.0-2) unstable; urgency=medium
 
   * Team upload.
