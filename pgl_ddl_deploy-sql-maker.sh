@@ -47,7 +47,8 @@ add_file functions/subscriber_command.sql $update_file
 add_file functions/raise_message.sql $update_file
 add_file views/event_trigger_schema.sql $update_file
 
-# Add NEW table schema and extension config changes
+# Post-schema changes
+add_file schema/1.5_post.sql $update_file
 
 # Only copy diff and new files after last version, and add the update script
 cp $last_version_file $new_version_file

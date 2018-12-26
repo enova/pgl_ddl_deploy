@@ -134,10 +134,12 @@ reported     BOOLEAN
 )
 AS
 $BODY$
+DECLARE
+    c_exclude_users text[] = '{postgres}';
 BEGIN
 
 RETURN QUERY
-SELECT COALESCE(p_signal_blocking_subscriber_sessions,'cancel') AS signal,
+SELECT p_signal_blocking_subscriber_sessions AS signal,
   CASE
     WHEN p_signal_blocking_subscriber_sessions IS NULL
       THEN FALSE
@@ -174,7 +176,10 @@ AND n.nspname = p_nspname
 AND c.relname = p_relname
 AND a.datname = current_database()
 AND c.relkind = 'r'
-AND l.locktype = 'relation';
+AND l.locktype = 'relation'
+AND a.usename != ALL(c_exclude_users)
+AND a.application_name NOT LIKE 'pglogical apply%'
+ORDER BY xact_start DESC;
 
 END;
 $BODY$
@@ -1058,5 +1063,19 @@ SELECT
         AND evtenabled IN('O','R','A')
     ) AS is_deployed
 FROM build b;
+
+
+-- Ensure added roles have write permissions for new tables added
+-- Not so easy to pre-package this with default privileges because
+-- we can't assume everyone uses the same role to deploy this extension
+SELECT pgl_ddl_deploy.add_role(role_oid)
+FROM (
+SELECT DISTINCT r.oid AS role_oid
+FROM information_schema.table_privileges tp
+INNER JOIN pg_roles r ON r.rolname = tp.grantee AND NOT r.rolsuper
+WHERE table_schema = 'pgl_ddl_deploy'
+  AND privilege_type = 'INSERT'
+  AND table_name = 'subscriber_logs'
+) roles_with_existing_privileges;
 
 

@@ -18,10 +18,12 @@ reported     BOOLEAN
 )
 AS
 $BODY$
+DECLARE
+    c_exclude_users text[] = '{postgres}';
 BEGIN
 
 RETURN QUERY
-SELECT COALESCE(p_signal_blocking_subscriber_sessions,'cancel') AS signal,
+SELECT p_signal_blocking_subscriber_sessions AS signal,
   CASE
     WHEN p_signal_blocking_subscriber_sessions IS NULL
       THEN FALSE
@@ -58,7 +60,10 @@ AND n.nspname = p_nspname
 AND c.relname = p_relname
 AND a.datname = current_database()
 AND c.relkind = 'r'
-AND l.locktype = 'relation';
+AND l.locktype = 'relation'
+AND a.usename != ALL(c_exclude_users)
+AND a.application_name NOT LIKE 'pglogical apply%'
+ORDER BY a.state_change DESC;
 
 END;
 $BODY$
