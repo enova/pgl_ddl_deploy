@@ -36,7 +36,13 @@ CREATE TYPE pgl_ddl_deploy.signals AS ENUM ('cancel','terminate');
 ALTER TABLE pgl_ddl_deploy.set_configs
   ADD COLUMN signal_blocking_subscriber_sessions pgl_ddl_deploy.signals;
 ALTER TABLE pgl_ddl_deploy.set_configs
-  ADD COLUMN subscriber_lock_timeout INTERVAL;
+  ADD COLUMN subscriber_lock_timeout INT;
+
+ALTER TABLE pgl_ddl_deploy.set_configs
+  ADD CONSTRAINT valid_signal_blocker_config
+  CHECK
+  (NOT (lock_safe_deployment AND (signal_blocking_subscriber_sessions IS NOT NULL OR subscriber_lock_timeout IS NOT NULL))
+    AND NOT (subscriber_lock_timeout IS NOT NULL AND signal_blocking_subscriber_sessions IS NULL));
 
 CREATE TABLE pgl_ddl_deploy.killed_blockers
 (

@@ -4727,7 +4727,13 @@ CREATE TYPE pgl_ddl_deploy.signals AS ENUM ('cancel','terminate');
 ALTER TABLE pgl_ddl_deploy.set_configs
   ADD COLUMN signal_blocking_subscriber_sessions pgl_ddl_deploy.signals;
 ALTER TABLE pgl_ddl_deploy.set_configs
-  ADD COLUMN subscriber_lock_timeout INTERVAL;
+  ADD COLUMN subscriber_lock_timeout INT;
+
+ALTER TABLE pgl_ddl_deploy.set_configs
+  ADD CONSTRAINT valid_signal_blocker_config
+  CHECK
+  (NOT (lock_safe_deployment AND (signal_blocking_subscriber_sessions IS NOT NULL OR subscriber_lock_timeout IS NOT NULL))
+    AND NOT (subscriber_lock_timeout IS NOT NULL AND signal_blocking_subscriber_sessions IS NULL));
 
 CREATE TABLE pgl_ddl_deploy.killed_blockers
 (
@@ -4801,6 +4807,7 @@ p_relname NAME)
 RETURNS TABLE (
 signal       pgl_ddl_deploy.signals,
 successful   BOOLEAN,
+raised_message BOOLEAN,
 pid          INT,
 executed_at  TIMESTAMPTZ,
 usename      NAME,
@@ -4825,6 +4832,14 @@ SELECT COALESCE(p_signal_blocking_subscriber_sessions,'cancel') AS signal,
     WHEN p_signal_blocking_subscriber_sessions = 'terminate'
       THEN pg_terminate_backend(l.pid)
   END AS successful,
+  CASE
+    WHEN p_signal_blocking_subscriber_sessions IS NULL
+      THEN FALSE 
+    WHEN p_signal_blocking_subscriber_sessions = 'cancel'
+      THEN pgl_ddl_deploy.raise_message('WARNING', format('Attemping cancel of blocking pid %s, query: %s', l.pid, a.query))
+    WHEN p_signal_blocking_subscriber_sessions = 'terminate'
+      THEN pgl_ddl_deploy.raise_message('WARNING', format('Attemping termination of blocking pid %s, query: %s', l.pid, a.query))
+  END AS raised_message,
   l.pid,
   now() AS executed_at,
   a.usename,
@@ -4852,7 +4867,7 @@ $BODY$
 SECURITY DEFINER
 LANGUAGE plpgsql VOLATILE;
 
-REVOKE EXECUTE ON FUNCTION pgl_ddl_deploy.kill_blockers FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION pgl_ddl_deploy.kill_blockers(pgl_ddl_deploy.signals, NAME, NAME) FROM PUBLIC;
 
 
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.add_role(p_roleoid oid)
@@ -4891,6 +4906,160 @@ RETURN false;
 END;
 $function$
 ;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.subscriber_command
+(
+  p_provider_name NAME,
+  p_set_name TEXT[],
+  p_nspname NAME,
+  p_relname NAME,
+  p_ddl_sql_sent TEXT,
+  p_full_ddl TEXT,
+  p_pid INT,
+  p_set_config_id INT,
+  p_queue_subscriber_failures BOOLEAN,
+  p_signal_blocking_subscriber_sessions pgl_ddl_deploy.signals,
+  p_lock_timeout INT,
+-- This parameter currently only exists to make testing this function easier
+  p_run_anywhere BOOLEAN = FALSE
+)
+RETURNS BOOLEAN
+AS $pgl_ddl_deploy_sql$
+DECLARE
+  v_succeeded BOOLEAN;
+  v_error_message TEXT;
+BEGIN
+
+--Only run on subscriber with this replication set, and matching provider node name
+IF EXISTS (SELECT 1
+              FROM pglogical.subscription s
+              INNER JOIN pglogical.node n
+                ON n.node_id = s.sub_origin
+                AND n.node_name = p_provider_name
+              WHERE sub_replication_sets && p_set_name) OR p_run_anywhere THEN
+
+    v_error_message = NULL;
+    WHILE TRUE LOOP
+    IF p_signal_blocking_subscriber_sessions IS NOT NULL THEN
+    -- We cannot RESET LOCAL lock_timeout but that should not be necessary because it will end with the transaction
+      EXECUTE format('SET LOCAL lock_timeout TO %s', p_lock_timeout);
+    END IF;
+    BEGIN
+
+     --Execute DDL
+     RAISE LOG 'pgl_ddl_deploy attempting execution: %', p_full_ddl;
+     
+    --Execute DDL - the reason we use execute here is partly to handle no trailing semicolon
+     EXECUTE p_full_ddl;
+
+     v_succeeded = TRUE;
+     EXIT;
+
+    EXCEPTION
+      WHEN lock_not_available THEN
+        IF p_signal_blocking_subscriber_sessions IS NOT NULL THEN
+          INSERT INTO pgl_ddl_deploy.killed_blockers
+            (signal,
+            successful,
+            pid,
+            executed_at,
+            usename,
+            client_addr,
+            xact_start,
+            state_change,
+            state,
+            query,
+            reported)
+          SELECT
+            signal,
+            successful,
+            pid,
+            executed_at,
+            usename,
+            client_addr,
+            xact_start,
+            state_change,
+            state,
+            query,
+            reported
+          FROM pgl_ddl_deploy.kill_blockers(
+            p_signal_blocking_subscriber_sessions,
+            p_nspname,
+            p_relname
+          );
+
+          -- Continue and retry again but allow a brief pause
+          PERFORM pg_sleep(3);
+        ELSE
+          -- If p_signal_blocking_subscriber_sessions is not configured but we hit a lock_timeout,
+          -- then the replication user or cluster is configured with a global lock_timeout.  Raise in this case.
+          RAISE;
+        END IF;
+      WHEN OTHERS THEN
+        IF p_queue_subscriber_failures THEN
+          RAISE WARNING 'Subscriber DDL failed with errors (see pgl_ddl_deploy.subscriber_logs): %', SQLERRM;
+          v_succeeded = FALSE;
+          v_error_message = SQLERRM;
+          EXIT;
+        ELSE
+          RAISE;
+        END IF;
+    END;
+    END LOOP;
+
+    INSERT INTO pgl_ddl_deploy.subscriber_logs
+    (set_name,
+     provider_pid,
+     provider_node_name,
+     provider_set_config_id,
+     executed_as_role,
+     subscriber_pid,
+     executed_at,
+     ddl_sql,
+     full_ddl_sql,
+     succeeded,
+     error_message)
+    VALUES
+    (p_set_name,
+     p_pid,
+     p_provider_name,
+     p_set_config_id,
+     current_role,
+     pg_backend_pid(),
+     current_timestamp,
+     p_ddl_sql_sent,
+     p_full_ddl,
+     v_succeeded,
+     v_error_message);
+
+END IF;
+
+RETURN v_succeeded;
+
+END;
+$pgl_ddl_deploy_sql$
+LANGUAGE plpgsql VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.raise_message
+(p_log_level TEXT,
+p_message TEXT)
+RETURNS BOOLEAN 
+AS $BODY$
+BEGIN
+
+EXECUTE format($$
+DO $block$
+BEGIN
+RAISE %s $pgl_ddl_deploy_msg$%s$pgl_ddl_deploy_msg$;
+END$block$;
+$$, p_log_level, p_message);
+RETURN TRUE;
+
+END;
+$BODY$
+LANGUAGE plpgsql VOLATILE;
 
 
 CREATE OR REPLACE VIEW pgl_ddl_deploy.event_trigger_schema AS
@@ -4953,6 +5122,8 @@ WITH vars AS
 
   --Configurable options in function setup
   c_set_config_id INT = $BUILD$||id::TEXT||$BUILD$;
+  -- Even though pglogical supports an array of sets, we only pipe DDL through one at a time
+  -- So c_set_name is a text not text[] data type.
   c_set_name TEXT = '$BUILD$||set_name||$BUILD$';
   c_include_schema_regex TEXT = $BUILD$||COALESCE(''''||include_schema_regex||'''','NULL')||$BUILD$;
   c_lock_safe_deployment BOOLEAN = $BUILD$||lock_safe_deployment||$BUILD$;
@@ -4963,7 +5134,7 @@ WITH vars AS
   c_blacklisted_tags TEXT[] = '$BUILD$||blacklisted_tags::TEXT||$BUILD$';
   c_exclude_alter_table_subcommands TEXT[] = $BUILD$||COALESCE(quote_literal(exclude_alter_table_subcommands::TEXT),'NULL')||$BUILD$;
   c_signal_blocking_subscriber_sessions TEXT = $BUILD$||COALESCE(quote_literal(signal_blocking_subscriber_sessions::TEXT),'NULL')||$BUILD$;
-  c_subscriber_lock_timeout INTERVAL = $BUILD$||COALESCE(quote_literal(subscriber_lock_timeout::TEXT),'NULL')||$BUILD$;
+  c_subscriber_lock_timeout INT = $BUILD$||COALESCE(subscriber_lock_timeout::TEXT,'NULL')||$BUILD$;
 
     --Constants based on configuration
   c_exec_prefix TEXT =(CASE
@@ -5106,124 +5277,26 @@ WITH vars AS
             SET SEARCH_PATH TO $INNER_BLOCK$||
             CASE WHEN COALESCE(c_search_path,'') IN('','""') THEN quote_literal('') ELSE c_search_path END||$INNER_BLOCK$;
 
-            --Execute DDL - the reason we use execute here is partly to handle no trailing semicolon
-            EXECUTE $EXEC_SUBSCRIBER$
             $INNER_BLOCK$||c_exec_prefix||v_ddl_sql_sent||c_exec_suffix||$INNER_BLOCK$
-            $EXEC_SUBSCRIBER$;
+            ;
         $INNER_BLOCK$;
 
         v_sql:=$INNER_BLOCK$
         SELECT pglogical.replicate_ddl_command($REPLICATE_DDL_COMMAND$
-        DO $AUTO_REPLICATE_BLOCK$
-        DECLARE
-          c_queue_subscriber_failures BOOLEAN = $INNER_BLOCK$||c_queue_subscriber_failures||$INNER_BLOCK$;
-          c_signal_blocking_subscriber_sessions TEXT = $INNER_BLOCK$||COALESCE(quote_literal(c_signal_blocking_subscriber_sessions),'NULL')||$INNER_BLOCK$;
-          v_succeeded BOOLEAN;
-          v_error_message TEXT;
-        BEGIN
-
-        --Only run on subscriber with this replication set, and matching provider node name
-        IF EXISTS (SELECT 1
-                      FROM pglogical.subscription s
-                      INNER JOIN pglogical.node n
-                        ON n.node_id = s.sub_origin
-                        AND n.node_name = '$INNER_BLOCK$||c_provider_name||$INNER_BLOCK$'
-                      WHERE sub_replication_sets && ARRAY['$INNER_BLOCK$||c_set_name||$INNER_BLOCK$']) THEN
-
-            v_error_message = NULL;
-            WHILE TRUE LOOP
-            IF c_signal_blocking_subscriber_sessions IS NOT NULL THEN
-            -- We cannot RESET LOCAL lock_timeout but that should not be necessary because it will end with the transaction
-              SET LOCAL lock_timeout TO $INNER_BLOCK$||quote_literal(COALESCE(c_subscriber_lock_timeout::TEXT, '3s'::TEXT))||$INNER_BLOCK$;
-            END IF;
-            BEGIN
-
-             --Execute DDL
-             $INNER_BLOCK$||v_full_ddl||$INNER_BLOCK$
-
-             v_succeeded = TRUE;
-             EXIT;
-
-            EXCEPTION
-              WHEN lock_not_available THEN
-                IF c_signal_blocking_subscriber_sessions IS NOT NULL THEN
-                  INSERT INTO pgl_ddl_deploy.killed_blockers
-                    (signal,
-                    successful,
-                    pid,
-                    executed_at,
-                    usename,
-                    client_addr,
-                    xact_start,
-                    state_change,
-                    state,
-                    query,
-                    reported)
-                  SELECT
-                    signal,
-                    successful,
-                    pid,
-                    executed_at,
-                    usename,
-                    client_addr,
-                    xact_start,
-                    state_change,
-                    state,
-                    query,
-                    reported
-                  FROM pgl_ddl_deploy.kill_blockers(
-                    c_signal_blocking_subscriber_sessions,
-                    $INNER_BLOCK$||COALESCE(quote_literal(v_nspname), 'NULL')::TEXT||$INNER_BLOCK$,
-                    $INNER_BLOCK$||COALESCE(quote_literal(v_relname), 'NULL')::TEXT||$INNER_BLOCK$
-                  );
-
-                  -- Continue and retry again but allow a brief pause
-                  PERFORM pg_sleep(3);
-                ELSE
-                  -- If c_signal_blocking_subscriber_sessions is not configured but we hit a lock_timeout,
-                  -- then the replication user or cluster is configured with a global lock_timeout.  Raise in this case.
-                  RAISE;
-                END IF;
-              WHEN OTHERS THEN
-                IF c_queue_subscriber_failures THEN
-                  RAISE WARNING 'Subscriber DDL failed with errors (see pgl_ddl_deploy.subscriber_logs): %', SQLERRM;
-                  v_succeeded = FALSE;
-                  v_error_message = SQLERRM;
-                  EXIT;
-                ELSE
-                  RAISE;
-                END IF;
-            END;
-            END LOOP;
-
-            INSERT INTO pgl_ddl_deploy.subscriber_logs
-            (set_name,
-             provider_pid,
-             provider_node_name,
-             provider_set_config_id,
-             executed_as_role,
-             subscriber_pid,
-             executed_at,
-             ddl_sql,
-             full_ddl_sql,
-             succeeded,
-             error_message)
-            VALUES
-            ('$INNER_BLOCK$||c_set_name||$INNER_BLOCK$',
-             $INNER_BLOCK$||v_pid::TEXT||$INNER_BLOCK$,
-             '$INNER_BLOCK$||c_provider_name||$INNER_BLOCK$',
-             $INNER_BLOCK$||c_set_config_id::TEXT||$INNER_BLOCK$,
-             current_role,
-             pg_backend_pid(),
-             current_timestamp,
-             $SQL$$INNER_BLOCK$||v_ddl_sql_sent||$INNER_BLOCK$$SQL$,
-             $SQL$$INNER_BLOCK$||v_full_ddl||$INNER_BLOCK$$SQL$,
-             v_succeeded,
-             v_error_message);
-
-        END IF;
-
-        END$AUTO_REPLICATE_BLOCK$;
+        SELECT pgl_ddl_deploy.subscriber_command
+        (
+          p_provider_name := $INNER_BLOCK$||quote_literal(c_provider_name)||$INNER_BLOCK$,
+          p_set_name := ARRAY[$INNER_BLOCK$||quote_literal(c_set_name)||$INNER_BLOCK$],
+          p_nspname := $INNER_BLOCK$||COALESCE(quote_literal(v_nspname), 'NULL')::TEXT||$INNER_BLOCK$,
+          p_relname := $INNER_BLOCK$||COALESCE(quote_literal(v_relname), 'NULL')::TEXT||$INNER_BLOCK$,
+          p_ddl_sql_sent := $pgl_ddl_deploy_sql$$INNER_BLOCK$||v_ddl_sql_sent||$INNER_BLOCK$$pgl_ddl_deploy_sql$,
+          p_full_ddl := $pgl_ddl_deploy_sql$$INNER_BLOCK$||v_full_ddl||$INNER_BLOCK$$pgl_ddl_deploy_sql$,
+          p_pid := $INNER_BLOCK$||v_pid::TEXT||$INNER_BLOCK$,
+          p_set_config_id := $INNER_BLOCK$||c_set_config_id::TEXT||$INNER_BLOCK$,
+          p_queue_subscriber_failures := $INNER_BLOCK$||c_queue_subscriber_failures||$INNER_BLOCK$,
+          p_signal_blocking_subscriber_sessions := $INNER_BLOCK$||COALESCE(quote_literal(c_signal_blocking_subscriber_sessions),'NULL')||$INNER_BLOCK$,
+          p_lock_timeout := $INNER_BLOCK$||COALESCE(c_subscriber_lock_timeout, 3000)||$INNER_BLOCK$
+        );
         $REPLICATE_DDL_COMMAND$,
         --Pipe this DDL command through chosen replication set
         ARRAY['$INNER_BLOCK$||c_set_name||$INNER_BLOCK$']);

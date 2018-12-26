@@ -5,6 +5,7 @@ p_relname NAME)
 RETURNS TABLE (
 signal       pgl_ddl_deploy.signals,
 successful   BOOLEAN,
+raised_message BOOLEAN,
 pid          INT,
 executed_at  TIMESTAMPTZ,
 usename      NAME,
@@ -29,6 +30,14 @@ SELECT COALESCE(p_signal_blocking_subscriber_sessions,'cancel') AS signal,
     WHEN p_signal_blocking_subscriber_sessions = 'terminate'
       THEN pg_terminate_backend(l.pid)
   END AS successful,
+  CASE
+    WHEN p_signal_blocking_subscriber_sessions IS NULL
+      THEN FALSE 
+    WHEN p_signal_blocking_subscriber_sessions = 'cancel'
+      THEN pgl_ddl_deploy.raise_message('WARNING', format('Attemping cancel of blocking pid %s, query: %s', l.pid, a.query))
+    WHEN p_signal_blocking_subscriber_sessions = 'terminate'
+      THEN pgl_ddl_deploy.raise_message('WARNING', format('Attemping termination of blocking pid %s, query: %s', l.pid, a.query))
+  END AS raised_message,
   l.pid,
   now() AS executed_at,
   a.usename,
@@ -56,4 +65,4 @@ $BODY$
 SECURITY DEFINER
 LANGUAGE plpgsql VOLATILE;
 
-REVOKE EXECUTE ON FUNCTION pgl_ddl_deploy.kill_blockers FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION pgl_ddl_deploy.kill_blockers(pgl_ddl_deploy.signals, NAME, NAME) FROM PUBLIC;

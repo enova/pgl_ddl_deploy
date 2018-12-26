@@ -1,4 +1,5 @@
-SET client_min_messages TO warning;
+-- Suppress pid-specific warning messages
+SET client_min_messages TO error;
 
 INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex, lock_safe_deployment, allow_multi_statements)
 VALUES ('test1','.*',true, true);
@@ -37,7 +38,7 @@ SELECT * FROM pgl_ddl_deploy.exceptions;
 Test cancel and terminate blocker functionality
 *****/
 SET ROLE postgres;
-UPDATE pgl_ddl_deploy.set_configs SET signal_blocking_subscriber_sessions = 'cancel';
+UPDATE pgl_ddl_deploy.set_configs SET lock_safe_deployment = FALSE, signal_blocking_subscriber_sessions = 'cancel';
 SELECT pgl_ddl_deploy.deploy(id) FROM pgl_ddl_deploy.set_configs WHERE set_name = 'test1';
 
 SET ROLE test_pgl_ddl_deploy;
@@ -63,19 +64,83 @@ SELECT * FROM pgl_ddl_deploy.unhandled;
 SELECT * FROM pgl_ddl_deploy.exceptions;
 
 CREATE TABLE public.foo(id serial primary key, bla int);
+CREATE TABLE public.bar(id serial primary key, bla int);
 \! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(5);" &
 SELECT pg_sleep(1);
-SELECT signal, successful, state, query, reported 
+SELECT signal, successful, state, query, reported, pg_sleep(1) 
 FROM pgl_ddl_deploy.kill_blockers('cancel','public','foo');
 \! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(5);" &
-
 SELECT pg_sleep(1);
-SELECT signal, successful, state, query, reported 
+SELECT signal, successful, state, query, reported, pg_sleep(1) 
 FROM pgl_ddl_deploy.kill_blockers('terminate','public','foo');
+
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(5);" &
+-- This process should not be killed
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; INSERT INTO public.bar (bla) VALUES (1); SELECT pg_sleep(2); COMMIT;" > /dev/null &
 SELECT pg_sleep(1);
+
+SELECT pgl_ddl_deploy.subscriber_command
+    (
+      p_provider_name := 'test',
+      p_set_name := ARRAY['test1'],
+      p_nspname := 'public',
+      p_relname := 'foo',
+      p_ddl_sql_sent := $pgl_ddl_deploy_sql$ALTER TABLE public.foo ADD COLUMN bar text;$pgl_ddl_deploy_sql$,
+      p_full_ddl := $pgl_ddl_deploy_sql$
+                --Be sure to use provider's search_path for SQL environment consistency
+                    SET SEARCH_PATH TO public;
+
+                    ALTER TABLE public.foo ADD COLUMN bar text;
+                    ;
+                $pgl_ddl_deploy_sql$,
+      p_pid := pg_backend_pid(),
+      p_set_config_id := 1,
+      p_queue_subscriber_failures := false,
+      p_signal_blocking_subscriber_sessions := 'cancel',
+    -- Lower lock_timeout to make this test run faster
+      p_lock_timeout := 300,
+    -- This parameter is only marked TRUE for this function to be able to easily run on a provider for regression testing
+      p_run_anywhere := TRUE
+);
+TABLE public.foo;
+
+-- Now two processes to be killed
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(5);" &
+SELECT pg_sleep(1);
+-- This process will wait for the one above - but we want it to fail regardless of which gets killed first
+-- Avoid it firing our event triggers by using session_replication_role = replica
+\! PGOPTIONS='--client-min-messages=warning --session-replication-role=replica' psql -d contrib_regression  -c "BEGIN; ALTER TABLE public.foo DROP COLUMN bar; SELECT pg_sleep(5);" &
+SELECT pg_sleep(1);
+
+SELECT pgl_ddl_deploy.subscriber_command
+    (
+      p_provider_name := 'test',
+      p_set_name := ARRAY['test1'],
+      p_nspname := 'public',
+      p_relname := 'foo',
+      p_ddl_sql_sent := $pgl_ddl_deploy_sql$ALTER TABLE public.foo ADD COLUMN super text;$pgl_ddl_deploy_sql$,
+      p_full_ddl := $pgl_ddl_deploy_sql$
+                --Be sure to use provider's search_path for SQL environment consistency
+                    SET SEARCH_PATH TO public;
+
+                    ALTER TABLE public.foo ADD COLUMN super text;
+                    ;
+                $pgl_ddl_deploy_sql$,
+      p_pid := pg_backend_pid(),
+      p_set_config_id := 1,
+      p_queue_subscriber_failures := false,
+      p_signal_blocking_subscriber_sessions := 'terminate',
+    -- Lower lock_timeout to make this test run faster
+      p_lock_timeout := 300,
+    -- This parameter is only marked TRUE for this function to be able to easily run on a provider for regression testing
+      p_run_anywhere := TRUE
+);
+TABLE public.foo;
 DROP TABLE public.foo CASCADE;
+TABLE bar;
+DROP TABLE public.bar CASCADE;
 
 SELECT id, signal, successful, state, query, reported
 FROM pgl_ddl_deploy.killed_blockers
-ORDER BY id;
+ORDER BY id, query;
 
