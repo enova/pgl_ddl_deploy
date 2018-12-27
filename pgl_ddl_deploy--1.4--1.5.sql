@@ -62,7 +62,8 @@ CREATE TABLE pgl_ddl_deploy.killed_blockers
   state_change TIMESTAMPTZ,
   state        TEXT,
   query        TEXT,
-  reported     BOOLEAN DEFAULT FALSE
+  reported     BOOLEAN DEFAULT FALSE,
+  reported_at  TIMESTAMPTZ
 );
 
 

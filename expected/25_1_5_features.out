@@ -279,7 +279,7 @@ ORDER BY id, query;
  id |  signal   | successful | state  |                               query                                | reported 
 ----+-----------+------------+--------+--------------------------------------------------------------------+----------
   1 | cancel    | t          | active | BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(5);               | f
-  2 | terminate | t          | active | BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(5);               | f
-  3 | terminate | t          | active | BEGIN; ALTER TABLE public.foo DROP COLUMN bar; SELECT pg_sleep(5); | f
+  2 | terminate | t          | active | BEGIN; ALTER TABLE public.foo DROP COLUMN bar; SELECT pg_sleep(5); | f
+  3 | terminate | t          | active | BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(5);               | f
 (3 rows)
 
