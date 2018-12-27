@@ -4865,7 +4865,7 @@ AND c.relkind = 'r'
 AND l.locktype = 'relation'
 AND a.usename != ALL(c_exclude_users)
 AND a.application_name NOT LIKE 'pglogical apply%'
-ORDER BY xact_start DESC;
+ORDER BY a.state_change DESC;
 
 END;
 $BODY$
@@ -5065,6 +5065,24 @@ RETURN TRUE;
 END;
 $BODY$
 LANGUAGE plpgsql VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.blacklisted_tags()
+ RETURNS text[]
+ LANGUAGE sql
+ IMMUTABLE
+AS $function$
+SELECT '{
+        INSERT,
+        UPDATE,
+        DELETE,
+        TRUNCATE,
+        ROLLBACK,
+        "CREATE EXTENSION",
+        "ALTER EXTENSION",
+        "DROP EXTENSION"}'::TEXT[];
+$function$
+;
 
 
 CREATE OR REPLACE VIEW pgl_ddl_deploy.event_trigger_schema AS

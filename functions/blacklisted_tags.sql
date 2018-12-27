@@ -8,7 +8,6 @@ SELECT '{
         UPDATE,
         DELETE,
         TRUNCATE,
-        SELECT,
         ROLLBACK,
         "CREATE EXTENSION",
         "ALTER EXTENSION",

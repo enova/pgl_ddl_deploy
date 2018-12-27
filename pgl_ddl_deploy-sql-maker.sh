@@ -45,6 +45,7 @@ add_file functions/kill_blockers.sql $update_file
 add_file functions/add_role.sql $update_file
 add_file functions/subscriber_command.sql $update_file
 add_file functions/raise_message.sql $update_file
+add_file functions/blacklisted_tags.sql $update_file
 add_file views/event_trigger_schema.sql $update_file
 
 # Post-schema changes
