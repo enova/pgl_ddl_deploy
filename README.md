@@ -39,6 +39,7 @@ https://innovation.enova.com/pursuing-postgres-ddl-replication/
 Summary of changes:
 * Add support for including every object without restriction in DDL for events like `GRANT`
 which do not provide access to the objects being modified.
+* Add support for killing and logging blocking processes on subscriber that prevent DDL execution
 
 ### Release 1.4
 Summary of changes:
@@ -143,6 +144,9 @@ terminated.
 - `ALTER TABLE` statements can be filtered by subcommand tags.  For example, if you are using
   selective replication and want to ignore things like `DISABLE TRIGGER` which may not exist
   on the subscriber, this is useful to add robustness to DDL replication.
+  
+- Optional support for automatically killing blocking processes on the subscriber system that
+  is preventing DDL execution.   
 
 ## <a name="full_example"></a>A Full Example
 
@@ -291,7 +295,15 @@ extension:
 CREATE EXTENSION pgl_ddl_deploy;
 ```
 
-**This extension needs to be installed on provider and all subscribers.**
+**This extension needs to be installed on provider and all subscribers.
+As of version 1.5.0, you must have the same pgl_ddl_deploy version on both
+the provider and subscriber (NOT necessarily the same Postgres version).**
+
+To update to pgl_ddl_deploy 1.5 from a previous version, install the latest version
+packages on your server(s), then run in the database(s):
+```sql
+ALTER EXTENSION pgl_ddl_deploy UPDATE;
+```
 
 # <a name="setup"></a>Setup and Deployment
 
@@ -358,6 +370,8 @@ SQL statement with a single node `parsetree`) will be eligible for propagation.
 - `drop_tags`: the set of command tags for which the drop event triggers will fire.
   Change with caution.  These are defaulted to the appropriate default set
   for either `include_schema_regex` or `include_only_repset_tables`.
+- `blacklisted_tags`: These are command tags that are never permitted to be propagated to
+  subscribers.  It is configurable, but the default is `pgl_ddl_deploy.blacklisted_tags()`
 - `exclude_alter_table_subcommands`: if you want to exclude certain `ALTER TABLE` subcommand tags,
   here is the place to do it.  The standard list can be found as the function
   `pgl_ddl_deploy.common_exclude_alter_table_subcommands()`.  You can also simply choose
@@ -368,6 +382,15 @@ SQL statement with a single node `parsetree`) will be eligible for propagation.
   you don't necessarily want to replicate data for all tables.
 - `include_everything`: Propagate all DDL events regardless of schema.  This is for cases
   like `GRANT` which do not provide access to information about which schema an object exists in.
+- `signal_blocking_subscriber_sessions`: Kill processes on the subscriber holding any kind of
+  lock on the target table which would prevent DDL execution.  `cancel` will use `pg_cancel_backend`,
+  `terminate` will use `pg_terminate_backend`.  `NULL` disables this feature.  Killed sessions
+  will be logged to the subscriber table `pgl_ddl_deploy.killed_blockers`, which has a field
+  `reported` and `reported_at` which are designed for monitoring where you can notify users
+  of killed queries, and then mark those queries as reported to users.
+- `subscriber_lock_timeout`: Only for use with `signal_blocking_subscriber_sessions`.  This is an
+  optional parameter for `lock_timeout` for DDL execution on subscriber in milliseconds before killing
+  blockers.  Default 3000 (3 seconds).
 
 There is already a pattern of schemas excluded always that you need not worry
 about. You can view them in this function:
@@ -376,7 +399,7 @@ SELECT pgl_ddl_deploy.exclude_regex();
 ```
 
 You can use this query to check what your current configs will pull in
-for schemas:
+for schemas if you are using `include_schema_regex`:
 ```sql
 SELECT sc.set_name, n.nspname
 FROM pg_namespace n
@@ -412,6 +435,9 @@ SELECT pgl_ddl_deploy.add_role(oid)
 FROM pg_roles
 WHERE rolname IN('app_owner_role');
 ```
+
+Note that in upgrading to version 1.5, we are automatically re-applying the permissions
+you have already granted using `add_role` to the new tables in this version. 
 
 ## <a name="deployment"></a>Deployment of Automatic DDL Replication
 
