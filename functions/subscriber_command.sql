@@ -19,6 +19,8 @@ AS $pgl_ddl_deploy_sql$
 DECLARE
   v_succeeded BOOLEAN;
   v_error_message TEXT;
+  v_attempt_number INT = 0;
+  v_signal pgl_ddl_deploy.signals; 
 BEGIN
 
 --Only run on subscriber with this replication set, and matching provider node name
@@ -30,11 +32,12 @@ IF EXISTS (SELECT 1
               WHERE sub_replication_sets && p_set_name) OR p_run_anywhere THEN
 
     v_error_message = NULL;
-    WHILE TRUE LOOP
     IF p_signal_blocking_subscriber_sessions IS NOT NULL THEN
+      v_signal = CASE WHEN p_signal_blocking_subscriber_sessions = 'cancel_then_terminate' THEN 'cancel' ELSE p_signal_blocking_subscriber_sessions END; 
     -- We cannot RESET LOCAL lock_timeout but that should not be necessary because it will end with the transaction
       EXECUTE format('SET LOCAL lock_timeout TO %s', p_lock_timeout);
     END IF;
+    WHILE TRUE LOOP
     BEGIN
 
      --Execute DDL
@@ -49,6 +52,10 @@ IF EXISTS (SELECT 1
     EXCEPTION
       WHEN lock_not_available THEN
         IF p_signal_blocking_subscriber_sessions IS NOT NULL THEN
+          -- Change to terminate if we are using cancel_then_terminate and have not been successful after the first iteration 
+          IF v_attempt_number > 0 AND p_signal_blocking_subscriber_sessions = 'cancel_then_terminate' AND v_signal = 'cancel' THEN
+            v_signal = 'terminate';
+          END IF;
           INSERT INTO pgl_ddl_deploy.killed_blockers
             (signal,
             successful,
@@ -74,12 +81,13 @@ IF EXISTS (SELECT 1
             query,
             reported
           FROM pgl_ddl_deploy.kill_blockers(
-            p_signal_blocking_subscriber_sessions,
+            v_signal,
             p_nspname,
             p_relname
           );
 
           -- Continue and retry again but allow a brief pause
+          v_attempt_number = v_attempt_number + 1;
           PERFORM pg_sleep(3);
         ELSE
           -- If p_signal_blocking_subscriber_sessions is not configured but we hit a lock_timeout,

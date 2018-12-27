@@ -136,6 +136,39 @@ SELECT pgl_ddl_deploy.subscriber_command
       p_run_anywhere := TRUE
 );
 TABLE public.foo;
+
+/****
+Try cancel_then_terminate, which should first try to cancel
+****/
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(5);" &
+-- This process should not be killed
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; INSERT INTO public.bar (bla) VALUES (1); SELECT pg_sleep(2); COMMIT;" > /dev/null &
+SELECT pg_sleep(1);
+
+SELECT pgl_ddl_deploy.subscriber_command
+    (
+      p_provider_name := 'test',
+      p_set_name := ARRAY['test1'],
+      p_nspname := 'public',
+      p_relname := 'foo',
+      p_ddl_sql_sent := $pgl_ddl_deploy_sql$ALTER TABLE public.foo ALTER COLUMN bar SET NOT NULL;$pgl_ddl_deploy_sql$,
+      p_full_ddl := $pgl_ddl_deploy_sql$
+                --Be sure to use provider's search_path for SQL environment consistency
+                    SET SEARCH_PATH TO public;
+
+                    ALTER TABLE public.foo ALTER COLUMN bar SET NOT NULL;
+                    ;
+                $pgl_ddl_deploy_sql$,
+      p_pid := pg_backend_pid(),
+      p_set_config_id := 1,
+      p_queue_subscriber_failures := false,
+      p_signal_blocking_subscriber_sessions := 'cancel_then_terminate',
+    -- Lower lock_timeout to make this test run faster
+      p_lock_timeout := 300,
+    -- This parameter is only marked TRUE for this function to be able to easily run on a provider for regression testing
+      p_run_anywhere := TRUE
+);
+TABLE public.foo;
 DROP TABLE public.foo CASCADE;
 TABLE bar;
 DROP TABLE public.bar CASCADE;

@@ -32,7 +32,7 @@ DROP FUNCTION pgl_ddl_deploy.unique_tags();
 DROP VIEW pgl_ddl_deploy.event_trigger_schema;
 
 -- Support canceling or terminating blocking processes on subscriber
-CREATE TYPE pgl_ddl_deploy.signals AS ENUM ('cancel','terminate');
+CREATE TYPE pgl_ddl_deploy.signals AS ENUM ('cancel','terminate','cancel_then_terminate');
 ALTER TABLE pgl_ddl_deploy.set_configs
   ADD COLUMN signal_blocking_subscriber_sessions pgl_ddl_deploy.signals;
 ALTER TABLE pgl_ddl_deploy.set_configs

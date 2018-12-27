@@ -4723,7 +4723,7 @@ DROP FUNCTION pgl_ddl_deploy.unique_tags();
 DROP VIEW pgl_ddl_deploy.event_trigger_schema;
 
 -- Support canceling or terminating blocking processes on subscriber
-CREATE TYPE pgl_ddl_deploy.signals AS ENUM ('cancel','terminate');
+CREATE TYPE pgl_ddl_deploy.signals AS ENUM ('cancel','terminate','cancel_then_terminate');
 ALTER TABLE pgl_ddl_deploy.set_configs
   ADD COLUMN signal_blocking_subscriber_sessions pgl_ddl_deploy.signals;
 ALTER TABLE pgl_ddl_deploy.set_configs
@@ -4802,7 +4802,7 @@ FOR EACH ROW EXECUTE PROCEDURE pgl_ddl_deploy.unique_tags();
 
 
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.kill_blockers
-(p_signal_blocking_subscriber_sessions pgl_ddl_deploy.signals,
+(p_signal pgl_ddl_deploy.signals,
 p_nspname NAME,
 p_relname NAME)
 RETURNS TABLE (
@@ -4821,26 +4821,24 @@ reported     BOOLEAN
 )
 AS
 $BODY$
-DECLARE
-    c_exclude_users text[] = '{postgres}';
 BEGIN
 
 RETURN QUERY
-SELECT p_signal_blocking_subscriber_sessions AS signal,
+SELECT p_signal AS signal,
   CASE
-    WHEN p_signal_blocking_subscriber_sessions IS NULL
+    WHEN p_signal IS NULL
       THEN FALSE
-    WHEN p_signal_blocking_subscriber_sessions = 'cancel'
+    WHEN p_signal = 'cancel'
       THEN pg_cancel_backend(l.pid)
-    WHEN p_signal_blocking_subscriber_sessions = 'terminate'
+    WHEN p_signal = 'terminate'
       THEN pg_terminate_backend(l.pid)
   END AS successful,
   CASE
-    WHEN p_signal_blocking_subscriber_sessions IS NULL
+    WHEN p_signal IS NULL
       THEN FALSE 
-    WHEN p_signal_blocking_subscriber_sessions = 'cancel'
+    WHEN p_signal = 'cancel'
       THEN pgl_ddl_deploy.raise_message('WARNING', format('Attemping cancel of blocking pid %s, query: %s', l.pid, a.query))
-    WHEN p_signal_blocking_subscriber_sessions = 'terminate'
+    WHEN p_signal = 'terminate'
       THEN pgl_ddl_deploy.raise_message('WARNING', format('Attemping termination of blocking pid %s, query: %s', l.pid, a.query))
   END AS raised_message,
   l.pid,
@@ -4856,6 +4854,10 @@ FROM pg_locks l
 INNER JOIN pg_class c on l.relation = c.oid
 INNER JOIN pg_namespace n on c.relnamespace = n.oid
 INNER JOIN pg_stat_activity a on l.pid = a.pid
+-- We do not exclude either postgres user or pglogical processes, because we even want to cancel autovac blocks.
+-- It should not be possible to contend with pglogical write processes (at least as of pglogical 2.2), because
+-- these run single-threaded using the same process that is doing the DDL and already holds any lock it needs
+-- on the target table.
 WHERE NOT a.pid = pg_backend_pid()
 -- both nspname and relname will be an empty string, thus a no-op, if for some reason one or the other
 -- is not found on the provider side in pg_event_trigger_ddl_commands().  This is a safety mechanism!
@@ -4864,8 +4866,6 @@ AND c.relname = p_relname
 AND a.datname = current_database()
 AND c.relkind = 'r'
 AND l.locktype = 'relation'
-AND a.usename != ALL(c_exclude_users)
-AND a.application_name NOT LIKE 'pglogical apply%'
 ORDER BY a.state_change DESC;
 
 END;
@@ -4935,6 +4935,8 @@ AS $pgl_ddl_deploy_sql$
 DECLARE
   v_succeeded BOOLEAN;
   v_error_message TEXT;
+  v_attempt_number INT = 0;
+  v_signal pgl_ddl_deploy.signals; 
 BEGIN
 
 --Only run on subscriber with this replication set, and matching provider node name
@@ -4946,11 +4948,12 @@ IF EXISTS (SELECT 1
               WHERE sub_replication_sets && p_set_name) OR p_run_anywhere THEN
 
     v_error_message = NULL;
-    WHILE TRUE LOOP
     IF p_signal_blocking_subscriber_sessions IS NOT NULL THEN
+      v_signal = CASE WHEN p_signal_blocking_subscriber_sessions = 'cancel_then_terminate' THEN 'cancel' ELSE p_signal_blocking_subscriber_sessions END; 
     -- We cannot RESET LOCAL lock_timeout but that should not be necessary because it will end with the transaction
       EXECUTE format('SET LOCAL lock_timeout TO %s', p_lock_timeout);
     END IF;
+    WHILE TRUE LOOP
     BEGIN
 
      --Execute DDL
@@ -4965,6 +4968,10 @@ IF EXISTS (SELECT 1
     EXCEPTION
       WHEN lock_not_available THEN
         IF p_signal_blocking_subscriber_sessions IS NOT NULL THEN
+          -- Change to terminate if we are using cancel_then_terminate and have not been successful after the first iteration 
+          IF v_attempt_number > 0 AND p_signal_blocking_subscriber_sessions = 'cancel_then_terminate' AND v_signal = 'cancel' THEN
+            v_signal = 'terminate';
+          END IF;
           INSERT INTO pgl_ddl_deploy.killed_blockers
             (signal,
             successful,
@@ -4990,12 +4997,13 @@ IF EXISTS (SELECT 1
             query,
             reported
           FROM pgl_ddl_deploy.kill_blockers(
-            p_signal_blocking_subscriber_sessions,
+            v_signal,
             p_nspname,
             p_relname
           );
 
           -- Continue and retry again but allow a brief pause
+          v_attempt_number = v_attempt_number + 1;
           PERFORM pg_sleep(3);
         ELSE
           -- If p_signal_blocking_subscriber_sessions is not configured but we hit a lock_timeout,

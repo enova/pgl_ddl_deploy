@@ -276,10 +276,13 @@ WITH vars AS
     As a safeguard, if even the exception handler fails, exit cleanly but add a server log message
   **/
   EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_context = PG_EXCEPTION_CONTEXT, v_error = MESSAGE_TEXT, v_error_detail = PG_EXCEPTION_DETAIL;
+    GET STACKED DIAGNOSTICS
+        v_context = PG_EXCEPTION_CONTEXT,
+        v_error = MESSAGE_TEXT,
+        v_error_detail = PG_EXCEPTION_DETAIL;
     BEGIN
       INSERT INTO pgl_ddl_deploy.exceptions (set_config_id, set_name, pid, executed_at, ddl_sql, err_msg, err_state)
-      VALUES (c_set_config_id, c_set_name, v_pid, current_timestamp, v_sql, v_error||v_context, SQLSTATE);
+      VALUES (c_set_config_id, c_set_name, v_pid, current_timestamp, v_sql, format('%s %s %s', v_error, v_context, v_error_detail), SQLSTATE);
       RAISE WARNING '%', c_exception_msg;
     --No matter what, don't let this function block any DDL
     EXCEPTION WHEN OTHERS THEN

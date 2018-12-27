@@ -384,7 +384,8 @@ SQL statement with a single node `parsetree`) will be eligible for propagation.
   like `GRANT` which do not provide access to information about which schema an object exists in.
 - `signal_blocking_subscriber_sessions`: Kill processes on the subscriber holding any kind of
   lock on the target table which would prevent DDL execution.  `cancel` will use `pg_cancel_backend`,
-  `terminate` will use `pg_terminate_backend`.  `NULL` disables this feature.  Killed sessions
+  `terminate` will use `pg_terminate_backend`. `cancel_then_terminate` will try to cancel and if not
+  successful, will go to terminate.  `NULL` disables this feature.  Killed sessions
   will be logged to the subscriber table `pgl_ddl_deploy.killed_blockers`, which has a field
   `reported` and `reported_at` which are designed for monitoring where you can notify users
   of killed queries, and then mark those queries as reported to users.
