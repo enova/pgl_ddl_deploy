@@ -34,9 +34,9 @@ SELECT p_signal AS signal,
     WHEN p_signal IS NULL
       THEN FALSE 
     WHEN p_signal = 'cancel'
-      THEN pgl_ddl_deploy.raise_message('WARNING', format('Attemping cancel of blocking pid %s, query: %s', l.pid, a.query))
+      THEN pgl_ddl_deploy.raise_message('WARNING', format('Attempting cancel of blocking pid %s, query: %s', l.pid, a.query))
     WHEN p_signal = 'terminate'
-      THEN pgl_ddl_deploy.raise_message('WARNING', format('Attemping termination of blocking pid %s, query: %s', l.pid, a.query))
+      THEN pgl_ddl_deploy.raise_message('WARNING', format('Attempting termination of blocking pid %s, query: %s', l.pid, a.query))
   END AS raised_message,
   l.pid,
   now() AS executed_at,

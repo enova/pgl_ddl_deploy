@@ -4837,9 +4837,9 @@ SELECT p_signal AS signal,
     WHEN p_signal IS NULL
       THEN FALSE 
     WHEN p_signal = 'cancel'
-      THEN pgl_ddl_deploy.raise_message('WARNING', format('Attemping cancel of blocking pid %s, query: %s', l.pid, a.query))
+      THEN pgl_ddl_deploy.raise_message('WARNING', format('Attempting cancel of blocking pid %s, query: %s', l.pid, a.query))
     WHEN p_signal = 'terminate'
-      THEN pgl_ddl_deploy.raise_message('WARNING', format('Attemping termination of blocking pid %s, query: %s', l.pid, a.query))
+      THEN pgl_ddl_deploy.raise_message('WARNING', format('Attempting termination of blocking pid %s, query: %s', l.pid, a.query))
   END AS raised_message,
   l.pid,
   now() AS executed_at,
@@ -5372,10 +5372,13 @@ WITH vars AS
     As a safeguard, if even the exception handler fails, exit cleanly but add a server log message
   **/
   EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_context = PG_EXCEPTION_CONTEXT, v_error = MESSAGE_TEXT, v_error_detail = PG_EXCEPTION_DETAIL;
+    GET STACKED DIAGNOSTICS
+        v_context = PG_EXCEPTION_CONTEXT,
+        v_error = MESSAGE_TEXT,
+        v_error_detail = PG_EXCEPTION_DETAIL;
     BEGIN
       INSERT INTO pgl_ddl_deploy.exceptions (set_config_id, set_name, pid, executed_at, ddl_sql, err_msg, err_state)
-      VALUES (c_set_config_id, c_set_name, v_pid, current_timestamp, v_sql, v_error||v_context, SQLSTATE);
+      VALUES (c_set_config_id, c_set_name, v_pid, current_timestamp, v_sql, format('%s %s %s', v_error, v_context, v_error_detail), SQLSTATE);
       RAISE WARNING '%', c_exception_msg;
     --No matter what, don't let this function block any DDL
     EXCEPTION WHEN OTHERS THEN
