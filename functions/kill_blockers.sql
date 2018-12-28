@@ -18,6 +18,18 @@ reported     BOOLEAN
 )
 AS
 $BODY$
+/****
+This function is only called on the subscriber on which we are applying DDL,
+when it is blocked and hits the configured lock_timeout.
+
+It is called by the function pgl_ddl_deploy.subscriber_command() only if it hits
+lock_timeout and it is configured to send a signal to blocking queries.
+
+It has three main features:
+    1. Signal blocking sessions with either cancel or terminate.
+    2. Raise a WARNING message to server logs in case of a kill attempt
+    3. Return the recordset with details of killed queries for auditing purposes.
+****/
 BEGIN
 
 RETURN QUERY

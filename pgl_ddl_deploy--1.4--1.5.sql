@@ -135,6 +135,18 @@ reported     BOOLEAN
 )
 AS
 $BODY$
+/****
+This function is only called on the subscriber on which we are applying DDL,
+when it is blocked and hits the configured lock_timeout.
+
+It is called by the function pgl_ddl_deploy.subscriber_command() only if it hits
+lock_timeout and it is configured to send a signal to blocking queries.
+
+It has three main features:
+    1. Signal blocking sessions with either cancel or terminate.
+    2. Raise a WARNING message to server logs in case of a kill attempt
+    3. Return the recordset with details of killed queries for auditing purposes.
+****/
 BEGIN
 
 RETURN QUERY
@@ -246,6 +258,16 @@ CREATE OR REPLACE FUNCTION pgl_ddl_deploy.subscriber_command
 )
 RETURNS BOOLEAN
 AS $pgl_ddl_deploy_sql$
+/****
+This function is what will actually be executed on the subscriber when attempting to apply DDL
+changed.  It is sent to subscriber(s) via pglogical.replicate_ddl_command.  You can see how it
+is called based on the the view pgl_ddl_deploy.event_trigger_schema, which is used to create the
+specific event trigger functions that will call this function in different ways depending on
+configuration in pgl_ddl_deploy.set_configs.
+
+This function is also used to make testing easier.  The regression suite calls
+this function to verify basic functionality. 
+****/
 DECLARE
   v_succeeded BOOLEAN;
   v_error_message TEXT;
@@ -262,11 +284,23 @@ IF EXISTS (SELECT 1
               WHERE sub_replication_sets && p_set_name) OR p_run_anywhere THEN
 
     v_error_message = NULL;
+    /****
+    If we have configured to kill blocking subscribers, here we set parameters for that:
+        1. Whether to cancel or terminate
+        2. What lock_timeout to tolerate 
+    ****/
     IF p_signal_blocking_subscriber_sessions IS NOT NULL THEN
       v_signal = CASE WHEN p_signal_blocking_subscriber_sessions = 'cancel_then_terminate' THEN 'cancel' ELSE p_signal_blocking_subscriber_sessions END; 
     -- We cannot RESET LOCAL lock_timeout but that should not be necessary because it will end with the transaction
       EXECUTE format('SET LOCAL lock_timeout TO %s', p_lock_timeout);
     END IF;
+
+    /****
+    Loop until one of the following takes place:
+        1. Successful DDL execution on first attempt 
+        2. An unexpected ERROR occurs, which will either RAISE or finish with WARNING based on queue_subscriber_failures configuration 
+        3. Blocking sessions are killed until we finally get a successful DDL execution
+    ****/
     WHILE TRUE LOOP
     BEGIN
 
@@ -336,6 +370,13 @@ IF EXISTS (SELECT 1
     END;
     END LOOP;
 
+    /****
+    Since this function is only executed on the subscriber, this INSERT adds a log
+    to subscriber_logs on the subscriber after execution.
+
+    Note that if we configured queue_subscriber_failures to TRUE in pgl_ddl_deploy.set_configs, then we are
+    allowing failed DDL to be caught and logged in this table as succeeded = FALSE for later processing.
+    ****/
     INSERT INTO pgl_ddl_deploy.subscriber_logs
     (set_name,
      provider_pid,
