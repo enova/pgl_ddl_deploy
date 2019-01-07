@@ -1,3 +1,454 @@
+/* pgl_ddl_deploy--1.4--1.5.sql */
+
+-- complain if script is sourced in psql, rather than via CREATE EXTENSION
+\echo Use "CREATE EXTENSION pgl_ddl_deploy" to load this file. \quit
+
+ALTER TABLE pgl_ddl_deploy.set_configs
+  ADD COLUMN include_everything
+  BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Now we have 3 configuration types
+ALTER TABLE pgl_ddl_deploy.set_configs
+  DROP CONSTRAINT repset_tables_or_regex_inclusion;
+
+-- Only allow one of them to be chosen
+ALTER TABLE pgl_ddl_deploy.set_configs
+  ADD CONSTRAINT single_configuration_type
+  CHECK
+  ((include_schema_regex IS NOT NULL
+   AND NOT include_only_repset_tables)
+   OR
+   (include_only_repset_tables
+    AND include_schema_regex IS NULL)
+   OR
+   (include_everything
+    AND NOT include_only_repset_tables
+    AND include_schema_regex IS NULL));
+
+ALTER TABLE pgl_ddl_deploy.set_configs
+  ADD CONSTRAINT ddl_only_restrictions
+  CHECK (NOT (ddl_only_replication AND include_only_repset_tables)); 
+
+-- Need to adjust to after trigger and change function def 
+DROP TRIGGER unique_tags ON pgl_ddl_deploy.set_configs;
+DROP FUNCTION pgl_ddl_deploy.unique_tags();
+
+-- We need to add the column include_everything to it in a nice order
+DROP VIEW pgl_ddl_deploy.event_trigger_schema;
+
+-- Support canceling or terminating blocking processes on subscriber
+CREATE TYPE pgl_ddl_deploy.signals AS ENUM ('cancel','terminate','cancel_then_terminate');
+ALTER TABLE pgl_ddl_deploy.set_configs
+  ADD COLUMN signal_blocking_subscriber_sessions pgl_ddl_deploy.signals;
+ALTER TABLE pgl_ddl_deploy.set_configs
+  ADD COLUMN subscriber_lock_timeout INT;
+
+ALTER TABLE pgl_ddl_deploy.set_configs
+  ADD CONSTRAINT valid_signal_blocker_config
+  CHECK
+  (NOT (lock_safe_deployment AND (signal_blocking_subscriber_sessions IS NOT NULL OR subscriber_lock_timeout IS NOT NULL))
+    AND NOT (subscriber_lock_timeout IS NOT NULL AND signal_blocking_subscriber_sessions IS NULL));
+
+CREATE TABLE pgl_ddl_deploy.killed_blockers
+(
+  id           SERIAL PRIMARY KEY,
+  signal       TEXT,
+  successful   BOOLEAN,
+  pid          INT,
+  executed_at  TIMESTAMPTZ,
+  usename      NAME,
+  client_addr  INET,
+  xact_start   TIMESTAMPTZ,
+  state_change TIMESTAMPTZ,
+  state        TEXT,
+  query        TEXT,
+  reported     BOOLEAN DEFAULT FALSE,
+  reported_at  TIMESTAMPTZ
+);
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.unique_tags()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_output TEXT;
+BEGIN
+    WITH dupes AS (
+    SELECT set_name,
+        CASE
+            WHEN include_only_repset_tables THEN 'include_only_repset_tables'
+            WHEN include_everything AND NOT ddl_only_replication THEN 'include_everything'
+            WHEN include_schema_regex IS NOT NULL AND NOT ddl_only_replication THEN 'include_schema_regex'
+            WHEN ddl_only_replication THEN
+                CASE
+                    WHEN include_everything THEN 'ddl_only_include_everything'
+                    WHEN include_schema_regex IS NOT NULL THEN 'ddl_only_include_schema_regex'
+                END
+        END AS category,
+    unnest(array_cat(create_tags, drop_tags)) AS command_tag
+    FROM pgl_ddl_deploy.set_configs
+    GROUP BY 1, 2, 3
+    HAVING COUNT(1) > 1)
+
+    , aggregate_dupe_tags AS (
+    SELECT set_name, category, string_agg(command_tag, ', ' ORDER BY command_tag) AS command_tags
+    FROM dupes
+    GROUP BY 1, 2
+    )
+
+    SELECT string_agg(format('%s: %s: %s', set_name, category, command_tags), ', ') AS output
+    INTO v_output
+    FROM aggregate_dupe_tags;
+
+    IF v_output IS NOT NULL THEN
+        RAISE EXCEPTION '%', format('You have overlapping configuration types and command tags which is not permitted: %s', v_output);
+    END IF;
+    RETURN NULL;
+END;
+$function$
+;
+
+
+CREATE TRIGGER unique_tags
+AFTER INSERT OR UPDATE ON pgl_ddl_deploy.set_configs
+FOR EACH ROW EXECUTE PROCEDURE pgl_ddl_deploy.unique_tags();
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.kill_blockers
+(p_signal pgl_ddl_deploy.signals,
+p_nspname NAME,
+p_relname NAME)
+RETURNS TABLE (
+signal       pgl_ddl_deploy.signals,
+successful   BOOLEAN,
+raised_message BOOLEAN,
+pid          INT,
+executed_at  TIMESTAMPTZ,
+usename      NAME,
+client_addr  INET,
+xact_start   TIMESTAMPTZ,
+state_change TIMESTAMPTZ,
+state        TEXT,
+query        TEXT,
+reported     BOOLEAN
+)
+AS
+$BODY$
+/****
+This function is only called on the subscriber on which we are applying DDL,
+when it is blocked and hits the configured lock_timeout.
+
+It is called by the function pgl_ddl_deploy.subscriber_command() only if it hits
+lock_timeout and it is configured to send a signal to blocking queries.
+
+It has three main features:
+    1. Signal blocking sessions with either cancel or terminate.
+    2. Raise a WARNING message to server logs in case of a kill attempt
+    3. Return the recordset with details of killed queries for auditing purposes.
+****/
+BEGIN
+
+RETURN QUERY
+SELECT p_signal AS signal,
+  CASE
+    WHEN p_signal IS NULL
+      THEN FALSE
+    WHEN p_signal = 'cancel'
+      THEN pg_cancel_backend(l.pid)
+    WHEN p_signal = 'terminate'
+      THEN pg_terminate_backend(l.pid)
+  END AS successful,
+  CASE
+    WHEN p_signal IS NULL
+      THEN FALSE 
+    WHEN p_signal = 'cancel'
+      THEN pgl_ddl_deploy.raise_message('WARNING', format('Attempting cancel of blocking pid %s, query: %s', l.pid, a.query))
+    WHEN p_signal = 'terminate'
+      THEN pgl_ddl_deploy.raise_message('WARNING', format('Attempting termination of blocking pid %s, query: %s', l.pid, a.query))
+  END AS raised_message,
+  l.pid,
+  now() AS executed_at,
+  a.usename,
+  a.client_addr,
+  a.xact_start,
+  a.state_change,
+  a.state,
+  a.query,
+  FALSE AS reported
+FROM pg_locks l
+INNER JOIN pg_class c on l.relation = c.oid
+INNER JOIN pg_namespace n on c.relnamespace = n.oid
+INNER JOIN pg_stat_activity a on l.pid = a.pid
+-- We do not exclude either postgres user or pglogical processes, because we even want to cancel autovac blocks.
+-- It should not be possible to contend with pglogical write processes (at least as of pglogical 2.2), because
+-- these run single-threaded using the same process that is doing the DDL and already holds any lock it needs
+-- on the target table.
+WHERE NOT a.pid = pg_backend_pid()
+-- both nspname and relname will be an empty string, thus a no-op, if for some reason one or the other
+-- is not found on the provider side in pg_event_trigger_ddl_commands().  This is a safety mechanism!
+AND n.nspname = p_nspname
+AND c.relname = p_relname
+AND a.datname = current_database()
+AND c.relkind = 'r'
+AND l.locktype = 'relation'
+ORDER BY a.state_change DESC;
+
+END;
+$BODY$
+SECURITY DEFINER
+LANGUAGE plpgsql VOLATILE;
+
+REVOKE EXECUTE ON FUNCTION pgl_ddl_deploy.kill_blockers(pgl_ddl_deploy.signals, NAME, NAME) FROM PUBLIC;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.add_role(p_roleoid oid)
+ RETURNS boolean
+ LANGUAGE plpgsql
+AS $function$
+/******
+Assuming roles doing DDL are not superusers, this function grants needed privileges
+to run through the pgl_ddl_deploy DDL deployment.
+This needs to be run on BOTH provider and subscriber.
+******/
+DECLARE
+    v_rec RECORD;
+    v_sql TEXT;
+BEGIN
+
+    FOR v_rec IN
+        SELECT quote_ident(rolname) AS rolname FROM pg_roles WHERE oid = p_roleoid
+    LOOP
+
+    v_sql:='
+    GRANT USAGE ON SCHEMA pglogical TO '||v_rec.rolname||';
+    GRANT USAGE ON SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
+    GRANT EXECUTE ON FUNCTION pglogical.replicate_ddl_command(text, text[]) TO '||v_rec.rolname||';
+    GRANT EXECUTE ON FUNCTION pglogical.replication_set_add_table(name, regclass, boolean, text[], text) TO '||v_rec.rolname||';
+    GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.sql_command_tags(text) TO '||v_rec.rolname||';
+    GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.kill_blockers(pgl_ddl_deploy.signals, name, name) TO '||v_rec.rolname||';
+    GRANT INSERT, UPDATE, SELECT ON ALL TABLES IN SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
+    GRANT USAGE ON ALL SEQUENCES IN SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
+    GRANT SELECT ON ALL TABLES IN SCHEMA pglogical TO '||v_rec.rolname||';';
+
+    EXECUTE v_sql;
+    RETURN true;
+    END LOOP;
+RETURN false;
+END;
+$function$
+;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.subscriber_command
+(
+  p_provider_name NAME,
+  p_set_name TEXT[],
+  p_nspname NAME,
+  p_relname NAME,
+  p_ddl_sql_sent TEXT,
+  p_full_ddl TEXT,
+  p_pid INT,
+  p_set_config_id INT,
+  p_queue_subscriber_failures BOOLEAN,
+  p_signal_blocking_subscriber_sessions pgl_ddl_deploy.signals,
+  p_lock_timeout INT,
+-- This parameter currently only exists to make testing this function easier
+  p_run_anywhere BOOLEAN = FALSE
+)
+RETURNS BOOLEAN
+AS $pgl_ddl_deploy_sql$
+/****
+This function is what will actually be executed on the subscriber when attempting to apply DDL
+changed.  It is sent to subscriber(s) via pglogical.replicate_ddl_command.  You can see how it
+is called based on the the view pgl_ddl_deploy.event_trigger_schema, which is used to create the
+specific event trigger functions that will call this function in different ways depending on
+configuration in pgl_ddl_deploy.set_configs.
+
+This function is also used to make testing easier.  The regression suite calls
+this function to verify basic functionality. 
+****/
+DECLARE
+  v_succeeded BOOLEAN;
+  v_error_message TEXT;
+  v_attempt_number INT = 0;
+  v_signal pgl_ddl_deploy.signals; 
+BEGIN
+
+--Only run on subscriber with this replication set, and matching provider node name
+IF EXISTS (SELECT 1
+              FROM pglogical.subscription s
+              INNER JOIN pglogical.node n
+                ON n.node_id = s.sub_origin
+                AND n.node_name = p_provider_name
+              WHERE sub_replication_sets && p_set_name) OR p_run_anywhere THEN
+
+    v_error_message = NULL;
+    /****
+    If we have configured to kill blocking subscribers, here we set parameters for that:
+        1. Whether to cancel or terminate
+        2. What lock_timeout to tolerate 
+    ****/
+    IF p_signal_blocking_subscriber_sessions IS NOT NULL THEN
+      v_signal = CASE WHEN p_signal_blocking_subscriber_sessions = 'cancel_then_terminate' THEN 'cancel' ELSE p_signal_blocking_subscriber_sessions END; 
+    -- We cannot RESET LOCAL lock_timeout but that should not be necessary because it will end with the transaction
+      EXECUTE format('SET LOCAL lock_timeout TO %s', p_lock_timeout);
+    END IF;
+
+    /****
+    Loop until one of the following takes place:
+        1. Successful DDL execution on first attempt 
+        2. An unexpected ERROR occurs, which will either RAISE or finish with WARNING based on queue_subscriber_failures configuration 
+        3. Blocking sessions are killed until we finally get a successful DDL execution
+    ****/
+    WHILE TRUE LOOP
+    BEGIN
+
+     --Execute DDL
+     RAISE LOG 'pgl_ddl_deploy attempting execution: %', p_full_ddl;
+     
+    --Execute DDL - the reason we use execute here is partly to handle no trailing semicolon
+     EXECUTE p_full_ddl;
+
+     v_succeeded = TRUE;
+     EXIT;
+
+    EXCEPTION
+      WHEN lock_not_available THEN
+        IF p_signal_blocking_subscriber_sessions IS NOT NULL THEN
+          -- Change to terminate if we are using cancel_then_terminate and have not been successful after the first iteration 
+          IF v_attempt_number > 0 AND p_signal_blocking_subscriber_sessions = 'cancel_then_terminate' AND v_signal = 'cancel' THEN
+            v_signal = 'terminate';
+          END IF;
+          INSERT INTO pgl_ddl_deploy.killed_blockers
+            (signal,
+            successful,
+            pid,
+            executed_at,
+            usename,
+            client_addr,
+            xact_start,
+            state_change,
+            state,
+            query,
+            reported)
+          SELECT
+            signal,
+            successful,
+            pid,
+            executed_at,
+            usename,
+            client_addr,
+            xact_start,
+            state_change,
+            state,
+            query,
+            reported
+          FROM pgl_ddl_deploy.kill_blockers(
+            v_signal,
+            p_nspname,
+            p_relname
+          );
+
+          -- Continue and retry again but allow a brief pause
+          v_attempt_number = v_attempt_number + 1;
+          PERFORM pg_sleep(3);
+        ELSE
+          -- If p_signal_blocking_subscriber_sessions is not configured but we hit a lock_timeout,
+          -- then the replication user or cluster is configured with a global lock_timeout.  Raise in this case.
+          RAISE;
+        END IF;
+      WHEN OTHERS THEN
+        IF p_queue_subscriber_failures THEN
+          RAISE WARNING 'Subscriber DDL failed with errors (see pgl_ddl_deploy.subscriber_logs): %', SQLERRM;
+          v_succeeded = FALSE;
+          v_error_message = SQLERRM;
+          EXIT;
+        ELSE
+          RAISE;
+        END IF;
+    END;
+    END LOOP;
+
+    /****
+    Since this function is only executed on the subscriber, this INSERT adds a log
+    to subscriber_logs on the subscriber after execution.
+
+    Note that if we configured queue_subscriber_failures to TRUE in pgl_ddl_deploy.set_configs, then we are
+    allowing failed DDL to be caught and logged in this table as succeeded = FALSE for later processing.
+    ****/
+    INSERT INTO pgl_ddl_deploy.subscriber_logs
+    (set_name,
+     provider_pid,
+     provider_node_name,
+     provider_set_config_id,
+     executed_as_role,
+     subscriber_pid,
+     executed_at,
+     ddl_sql,
+     full_ddl_sql,
+     succeeded,
+     error_message)
+    VALUES
+    (p_set_name,
+     p_pid,
+     p_provider_name,
+     p_set_config_id,
+     current_role,
+     pg_backend_pid(),
+     current_timestamp,
+     p_ddl_sql_sent,
+     p_full_ddl,
+     v_succeeded,
+     v_error_message);
+
+END IF;
+
+RETURN v_succeeded;
+
+END;
+$pgl_ddl_deploy_sql$
+LANGUAGE plpgsql VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.raise_message
+(p_log_level TEXT,
+p_message TEXT)
+RETURNS BOOLEAN 
+AS $BODY$
+BEGIN
+
+EXECUTE format($$
+DO $block$
+BEGIN
+RAISE %s $pgl_ddl_deploy_msg$%s$pgl_ddl_deploy_msg$;
+END$block$;
+$$, p_log_level, p_message);
+RETURN TRUE;
+
+END;
+$BODY$
+LANGUAGE plpgsql VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.blacklisted_tags()
+ RETURNS text[]
+ LANGUAGE sql
+ IMMUTABLE
+AS $function$
+SELECT '{
+        INSERT,
+        UPDATE,
+        DELETE,
+        TRUNCATE,
+        ROLLBACK,
+        "CREATE EXTENSION",
+        "ALTER EXTENSION",
+        "DROP EXTENSION"}'::TEXT[];
+$function$
+;
+
+
 CREATE OR REPLACE VIEW pgl_ddl_deploy.event_trigger_schema AS
 WITH vars AS
 (SELECT
@@ -683,3 +1134,19 @@ SELECT
         AND evtenabled IN('O','R','A')
     ) AS is_deployed
 FROM build b;
+
+
+-- Ensure added roles have write permissions for new tables added
+-- Not so easy to pre-package this with default privileges because
+-- we can't assume everyone uses the same role to deploy this extension
+SELECT pgl_ddl_deploy.add_role(role_oid)
+FROM (
+SELECT DISTINCT r.oid AS role_oid
+FROM information_schema.table_privileges tp
+INNER JOIN pg_roles r ON r.rolname = tp.grantee AND NOT r.rolsuper
+WHERE table_schema = 'pgl_ddl_deploy'
+  AND privilege_type = 'INSERT'
+  AND table_name = 'subscriber_logs'
+) roles_with_existing_privileges;
+
+

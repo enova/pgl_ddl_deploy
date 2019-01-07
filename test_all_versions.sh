@@ -38,7 +38,9 @@ EOM
 make_and_test "9.5"
 make_and_test "9.6"
 make_and_test "10"
+make_and_test "11"
 }
 
+test_all_versions "1.5"
 test_all_versions "1.4"
 test_all_versions "1.3"
