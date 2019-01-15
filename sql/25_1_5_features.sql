@@ -65,18 +65,18 @@ SELECT * FROM pgl_ddl_deploy.exceptions;
 
 CREATE TABLE public.foo(id serial primary key, bla int);
 CREATE TABLE public.bar(id serial primary key, bla int);
-\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(30);" &
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(30);" > /dev/null 2>&1 &
 SELECT pg_sleep(1);
 SELECT signal, successful, state, query, reported, pg_sleep(1) 
 FROM pgl_ddl_deploy.kill_blockers('cancel','public','foo');
-\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(30);" &
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(30);" > /dev/null 2>&1 &
 SELECT pg_sleep(1);
 SELECT signal, successful, state, query, reported, pg_sleep(1) 
 FROM pgl_ddl_deploy.kill_blockers('terminate','public','foo');
 
-\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(30);" &
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(30);" > /dev/null 2>&1 &
 -- This process should not be killed
-\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; INSERT INTO public.bar (bla) VALUES (1); SELECT pg_sleep(2); COMMIT;" > /dev/null &
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; INSERT INTO public.bar (bla) VALUES (1); SELECT pg_sleep(2); COMMIT;" > /dev/null 2>&1 &
 SELECT pg_sleep(1);
 
 SELECT pgl_ddl_deploy.subscriber_command
@@ -105,11 +105,11 @@ SELECT pgl_ddl_deploy.subscriber_command
 TABLE public.foo;
 
 -- Now two processes to be killed
-\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(30);" &
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(30);" > /dev/null 2>&1 &
 SELECT pg_sleep(1);
 -- This process will wait for the one above - but we want it to fail regardless of which gets killed first
 -- Avoid it firing our event triggers by using session_replication_role = replica
-\! PGOPTIONS='--client-min-messages=warning --session-replication-role=replica' psql -d contrib_regression  -c "BEGIN; ALTER TABLE public.foo DROP COLUMN bar; SELECT pg_sleep(30);" &
+\! PGOPTIONS='--client-min-messages=warning --session-replication-role=replica' psql -d contrib_regression  -c "BEGIN; ALTER TABLE public.foo DROP COLUMN bar; SELECT pg_sleep(30);" > /dev/null 2>&1 &
 SELECT pg_sleep(2);
 
 SELECT pgl_ddl_deploy.subscriber_command
