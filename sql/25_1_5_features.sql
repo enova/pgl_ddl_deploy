@@ -180,8 +180,11 @@ SELECT id, signal, successful, state, query, reported
 FROM pgl_ddl_deploy.killed_blockers
 ORDER BY id, query;
 
+SELECT pg_sleep(1);
+
 -- Should be zero - everything was killed
 SELECT COUNT(1)
 FROM pg_stat_activity
 WHERE usename = session_user
-  AND NOT pid = pg_backend_pid();
+  AND NOT pid = pg_backend_pid()
+  AND query LIKE '%public.foo%';
