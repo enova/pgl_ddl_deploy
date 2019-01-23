@@ -1,3 +1,9 @@
+pgl-ddl-deploy (1.5.1-1) unstable; urgency=medium
+
+  * Fix test race conditions and unstable output 
+
+ -- Jeremy Finzel <jfinzel@enova.com>  Tue, 15 Jan 2019 11:04:16 -0600 
+
 pgl-ddl-deploy (1.5.0-1) unstable; urgency=medium
 
   * Support more commands and allow kill blocking subscriber processes 
