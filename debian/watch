@@ -1,2 +1,2 @@
 version=4
-https://github.com/enova/pgl_ddl_deploy/releases .*/v(.*).tar.gz
+https://github.com/enova/pgl_ddl_deploy/releases .*/v([0-9].*).tar.gz
