@@ -1,3 +1,8 @@
+/* pgl_ddl_deploy--1.5--1.6.sql */
+
+-- complain if script is sourced in psql, rather than via CREATE EXTENSION
+\echo Use "CREATE EXTENSION pgl_ddl_deploy" to load this file. \quit
+
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.raise_message
 (p_log_level TEXT,
 p_message TEXT)
@@ -16,3 +21,5 @@ RETURN TRUE;
 END;
 $BODY$
 LANGUAGE plpgsql VOLATILE;
+
+

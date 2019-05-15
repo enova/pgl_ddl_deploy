@@ -2,8 +2,8 @@
 
 set -eu
 
-last_version=1.4
-new_version=1.5
+last_version=1.5
+new_version=1.6
 last_version_file=pgl_ddl_deploy--${last_version}.sql
 new_version_file=pgl_ddl_deploy--${new_version}.sql
 update_file=pgl_ddl_deploy--${last_version}--${new_version}.sql
@@ -36,20 +36,11 @@ d=$2
 create_update_file_with_header
 
 # Pre-schema changes
-add_file schema/1.5.sql $update_file
 
 # Add view and function changes
-add_file functions/unique_tags.sql $update_file
-add_file triggers/unique_tags.sql $update_file
-add_file functions/kill_blockers.sql $update_file
-add_file functions/add_role.sql $update_file
-add_file functions/subscriber_command.sql $update_file
 add_file functions/raise_message.sql $update_file
-add_file functions/blacklisted_tags.sql $update_file
-add_file views/event_trigger_schema.sql $update_file
 
 # Post-schema changes
-add_file schema/1.5_post.sql $update_file
 
 # Only copy diff and new files after last version, and add the update script
 cp $last_version_file $new_version_file
