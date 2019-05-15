@@ -15,6 +15,9 @@ SELECT '{
   ,"ALTER TYPE"
   ,"CREATE VIEW"
   ,"ALTER VIEW"
-  ,COMMENT}'::TEXT[];
+  ,COMMENT
+  ,"CREATE RULE"
+  ,"CREATE TRIGGER"
+  ,"ALTER TRIGGER"}'::TEXT[];
 $function$
 ;

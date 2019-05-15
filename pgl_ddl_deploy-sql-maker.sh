@@ -39,6 +39,7 @@ create_update_file_with_header
 
 # Add view and function changes
 add_file functions/raise_message.sql $update_file
+add_file functions/standard_create_tags.sql $update_file
 
 # Post-schema changes
 
