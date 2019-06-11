@@ -19,7 +19,7 @@ REGRESS := 01_create_ext 02_setup 03_add_configs 04_deploy 04_deploy_update \
            20_include_only_repset_tables_4 21_unprivileged_users \
            22_is_deployed 23_1_4_features 24_sub_retries \
            25_1_5_features 26_1_2_to_1_3 27_1_3_to_1_4 \
-           28_raise_message 99_cleanup
+           28_raise_message 29_1_6_features 99_cleanup
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
