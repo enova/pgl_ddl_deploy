@@ -67,6 +67,7 @@ WITH vars AS
   c_include_only_repset_tables BOOLEAN = $BUILD$||include_only_repset_tables||$BUILD$;
   c_include_everything BOOLEAN = $BUILD$||include_everything||$BUILD$;
   c_queue_subscriber_failures BOOLEAN = $BUILD$||queue_subscriber_failures||$BUILD$;
+  c_create_tags TEXT[] = '$BUILD$||create_tags::TEXT||$BUILD$';
   c_blacklisted_tags TEXT[] = '$BUILD$||blacklisted_tags::TEXT||$BUILD$';
   c_exclude_alter_table_subcommands TEXT[] = $BUILD$||COALESCE(quote_literal(exclude_alter_table_subcommands::TEXT),'NULL')||$BUILD$;
   c_signal_blocking_subscriber_sessions TEXT = $BUILD$||COALESCE(quote_literal(signal_blocking_subscriber_sessions::TEXT),'NULL')||$BUILD$;
@@ -438,12 +439,12 @@ BEGIN
         FROM pg_event_trigger_ddl_commands();
 
         /**
-          Add table to replication set immediately, if required.
+          Add table to replication set immediately, if required, and only if the set_config includes CREATE TABLE.
           We do not filter to tags here, because of possibility of multi-statement SQL.
           Optional ddl_only_replication will never auto-add tables to replication because the
           purpose is to only replicate keep the structure synchronized on the subscriber with no data.
         **/
-        IF NOT $BUILD$||include_only_repset_tables||$BUILD$ AND NOT $BUILD$||ddl_only_replication||$BUILD$ THEN
+        IF c_create_tags && '{"CREATE TABLE"}' AND NOT $BUILD$||include_only_repset_tables||$BUILD$ AND NOT $BUILD$||ddl_only_replication||$BUILD$ THEN
           PERFORM pglogical.replication_set_add_table(
             set_name:=c_set_name
             ,relation:=c.oid
