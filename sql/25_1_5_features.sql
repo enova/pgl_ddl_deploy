@@ -64,6 +64,7 @@ SELECT * FROM pgl_ddl_deploy.unhandled;
 SELECT * FROM pgl_ddl_deploy.exceptions;
 
 CREATE TABLE public.foo(id serial primary key, bla int);
+CREATE TABLE public.foo2 () INHERITS (public.foo);
 CREATE TABLE public.bar(id serial primary key, bla int);
 \! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(30);" > /dev/null 2>&1 &
 SELECT pg_sleep(1);
@@ -172,13 +173,26 @@ SELECT pgl_ddl_deploy.subscriber_command
       p_run_anywhere := TRUE
 );
 TABLE public.foo;
+
+/*** TEST INHERITANCE AND PARTITIONING ***/
+-- Same workflow as above, but instead select from child, alter parent
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo2; SELECT pg_sleep(30);" > /dev/null 2>&1 &
+SELECT pg_sleep(1);
+SELECT signal, successful, state, query, reported, pg_sleep(1)
+FROM pgl_ddl_deploy.kill_blockers('terminate','public','foo');
+/*** With <=1.5, it showed this.  But it should kill the process.
+ signal | successful | state | query | reported | pg_sleep
+--------+------------+-------+-------+----------+----------
+(0 rows)
+***/
+
 DROP TABLE public.foo CASCADE;
 TABLE bar;
 DROP TABLE public.bar CASCADE;
 
-SELECT id, signal, successful, state, query, reported
+SELECT signal, successful, state, query, reported
 FROM pgl_ddl_deploy.killed_blockers
-ORDER BY id, query;
+ORDER BY signal, query;
 
 SELECT pg_sleep(1);
 
