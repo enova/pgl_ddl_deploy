@@ -90,7 +90,7 @@ WITH vars AS
   --If there are any matches to our replication config, get the query
   --This will either be sent, or logged at this point if not deployable
   IF (c_include_everything AND v_exclude_always_match_count = 0) OR v_match_count > 0 THEN
-        v_ddl_sql_raw = current_query();
+        v_ddl_sql_raw = pgl_ddl_deploy.current_query();
         v_txid = txid_current();
   END IF;
   $BUILD$::TEXT AS shared_get_query,
@@ -565,7 +565,7 @@ BEGIN
   IF ((c_include_everything AND v_exclude_always_match_count = 0) OR v_match_count > 0)
     THEN
 
-    v_ddl_sql_raw = current_query();
+    v_ddl_sql_raw = pgl_ddl_deploy.current_query();
 
     PERFORM pgl_ddl_deploy.log_unhandled(
                c_set_config_id,

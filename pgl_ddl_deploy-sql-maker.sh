@@ -36,6 +36,7 @@ d=$2
 create_update_file_with_header
 
 # Pre-schema changes
+add_file schema/1.6.sql $update_file
 
 # Add view and function changes
 add_file functions/kill_blockers.sql $update_file
