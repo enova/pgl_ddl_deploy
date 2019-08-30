@@ -199,8 +199,23 @@ FROM pgl_ddl_deploy.kill_blockers('terminate','public','foo');
 (0 rows)
 ***/
 
+/*** TEST REFERENCED BY TABLE BLOCKER KILLER ***/
+-- Same workflow as above, but instead select from a table which has a pkey (foo) which is referenced by another table being altered (foo3) 
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(30);" > /dev/null 2>&1 &
+SELECT pg_sleep(1);
+SELECT signal, successful, state, query, reported, pg_sleep(1)
+FROM pgl_ddl_deploy.kill_blockers('terminate','public','foo3');
+/*** With <=1.5, it showed this.  But it should kill the process.
+ signal | successful | state | query | reported | pg_sleep
+--------+------------+-------+-------+----------+----------
+(0 rows)
+***/
+
+SET lock_timeout TO 1000;
 DROP TABLE public.foo CASCADE;
+-- With <=1.5, lock is still in place leading to ERROR:  canceling statement due to lock timeout
 DROP TABLE public.foo3 CASCADE;
+-- With <=1.5, lock is still in place leading to ERROR:  canceling statement due to lock timeout
 TABLE bar;
 DROP TABLE public.bar CASCADE;
 
