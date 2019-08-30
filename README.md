@@ -35,6 +35,15 @@ https://innovation.enova.com/pursuing-postgres-ddl-replication/
 
 # <a name="release_notes"></a>Release Notes
 
+### Release 1.6
+Summary of changes:
+* Workaround pglogical 2.2.2 failure resulting from unstable `debug_query_string` results
+* Support killing blockers on child tables while modifying parent
+* Support killing blockers involved in fkey relationship
+* Add more tags as default for common use cases
+* Bug fix: Fix raise message escape % bug
+* Bug fix: Only auto-add tables to replication if CREATE TABLE tag configured
+
 ### Release 1.5
 Summary of changes:
 * Add support for including every object without restriction in DDL for events like `GRANT`
