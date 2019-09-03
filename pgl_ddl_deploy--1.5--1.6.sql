@@ -8,6 +8,12 @@ RETURNS TEXT AS
 'MODULE_PATHNAME', 'pgl_ddl_deploy_current_query'
 LANGUAGE C VOLATILE STRICT;
 
+-- Drop UPDATE event for this trigger, which leads to unexpected behavior
+DROP TRIGGER set_tag_defaults ON pgl_ddl_deploy.set_configs;
+CREATE TRIGGER set_tag_defaults
+BEFORE INSERT ON pgl_ddl_deploy.set_configs
+FOR EACH ROW EXECUTE PROCEDURE pgl_ddl_deploy.set_tag_defaults();
+
 /*
  * We need to re-deploy the trigger function definitions
  * which will have changed with this extension update. So

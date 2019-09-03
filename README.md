@@ -43,6 +43,7 @@ Summary of changes:
 * Add more tags as default for common use cases
 * Bug fix: Fix raise message escape % bug
 * Bug fix: Only auto-add tables to replication if CREATE TABLE tag configured
+* Bug fix: Only set tag defaults on INSERT 
 
 ### Release 1.5
 Summary of changes:

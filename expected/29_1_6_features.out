@@ -42,3 +42,20 @@ TABLE tables_in_replication;
      2
 (1 row)
 
+-- Test to ensure we are only setting these defaults (trigger set_tag_defaults) on INSERT
+UPDATE pgl_ddl_deploy.set_configs
+SET drop_tags = NULL
+WHERE set_name = 'testspecial'
+RETURNING drop_tags;
+ drop_tags 
+-----------
+ 
+(1 row)
+
+/*
+In <= 1.5, returned this:
+                                      drop_tags
+--------------------------------------------------------------------------------------
+ {"DROP SCHEMA","DROP TABLE","DROP FUNCTION","DROP TYPE","DROP VIEW","DROP SEQUENCE"}
+(1 row)
+*/

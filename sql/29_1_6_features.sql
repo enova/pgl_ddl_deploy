@@ -28,3 +28,16 @@ LANGUAGE SQL;
 
 -- This SHOULD show the same as above, but showed 1 more table in <=1.5
 TABLE tables_in_replication;
+
+-- Test to ensure we are only setting these defaults (trigger set_tag_defaults) on INSERT
+UPDATE pgl_ddl_deploy.set_configs
+SET drop_tags = NULL
+WHERE set_name = 'testspecial'
+RETURNING drop_tags;
+/*
+In <= 1.5, returned this:
+                                      drop_tags
+--------------------------------------------------------------------------------------
+ {"DROP SCHEMA","DROP TABLE","DROP FUNCTION","DROP TYPE","DROP VIEW","DROP SEQUENCE"}
+(1 row)
+*/
