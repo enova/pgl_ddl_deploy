@@ -5846,6 +5846,18 @@ RETURNS TEXT AS
 'MODULE_PATHNAME', 'pgl_ddl_deploy_current_query'
 LANGUAGE C VOLATILE STRICT;
 
+/*
+ * We need to re-deploy the trigger function definitions
+ * which will have changed with this extension update. So
+ * here we undeploy them, and save which ones we need to 
+ * recreate later.
+*/
+DROP TABLE IF EXISTS ddl_deploy_to_refresh;
+CREATE TEMP TABLE ddl_deploy_to_refresh AS
+SELECT id, pgl_ddl_deploy.undeploy(id) AS undeployed
+FROM pgl_ddl_deploy.event_trigger_schema
+WHERE is_deployed;
+
 
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.kill_blockers
 (p_signal pgl_ddl_deploy.signals,
@@ -6683,5 +6695,13 @@ SELECT
         AND evtenabled IN('O','R','A')
     ) AS is_deployed
 FROM build b;
+
+
+-- Now re-deploy event triggers and functions
+SELECT id, pgl_ddl_deploy.deploy(id) AS deployed
+FROM ddl_deploy_to_refresh;
+
+DROP TABLE ddl_deploy_to_refresh;
+DROP TABLE IF EXISTS tmp_objs;
 
 
