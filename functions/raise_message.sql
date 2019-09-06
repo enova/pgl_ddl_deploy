@@ -10,7 +10,7 @@ DO $block$
 BEGIN
 RAISE %s $pgl_ddl_deploy_msg$%s$pgl_ddl_deploy_msg$;
 END$block$;
-$$, p_log_level, p_message);
+$$, p_log_level, REPLACE(p_message,'%','%%'));
 RETURN TRUE;
 
 END;

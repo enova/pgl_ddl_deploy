@@ -35,6 +35,16 @@ https://innovation.enova.com/pursuing-postgres-ddl-replication/
 
 # <a name="release_notes"></a>Release Notes
 
+### Release 1.6
+Summary of changes:
+* Workaround pglogical 2.2.2 failure resulting from unstable `debug_query_string` results
+* Support killing blockers on child tables while modifying parent
+* Support killing blockers involved in fkey relationship
+* Add more tags as default for common use cases
+* Bug fix: Fix raise message escape % bug
+* Bug fix: Only auto-add tables to replication if CREATE TABLE tag configured
+* Bug fix: Only set tag defaults on INSERT 
+
 ### Release 1.5
 Summary of changes:
 * Add support for including every object without restriction in DDL for events like `GRANT`
@@ -389,6 +399,8 @@ SQL statement with a single node `parsetree`) will be eligible for propagation.
   will be logged to the subscriber table `pgl_ddl_deploy.killed_blockers`, which has a field
   `reported` and `reported_at` which are designed for monitoring where you can notify users
   of killed queries, and then mark those queries as reported to users.
+  ** NOTE ** - currently, we do not support figuring out dependent locks with native partitioning.
+  You may miss killing blocking processes when native partitioning is involved.
 - `subscriber_lock_timeout`: Only for use with `signal_blocking_subscriber_sessions`.  This is an
   optional parameter for `lock_timeout` for DDL execution on subscriber in milliseconds before killing
   blockers.  Default 3000 (3 seconds).

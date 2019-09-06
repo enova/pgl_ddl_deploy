@@ -127,6 +127,8 @@ SELECT * FROM pgl_ddl_deploy.exceptions;
 (0 rows)
 
 CREATE TABLE public.foo(id serial primary key, bla int);
+CREATE TABLE public.foo2 () INHERITS (public.foo);
+CREATE TABLE public.foo3 (id serial primary key, foo_id int references public.foo (id));
 CREATE TABLE public.bar(id serial primary key, bla int);
 \! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(30);" > /dev/null 2>&1 &
 SELECT pg_sleep(1);
@@ -294,7 +296,74 @@ TABLE public.foo;
 ----+-----+-----+-------
 (0 rows)
 
+/*** TEST INHERITANCE AND PARTITIONING ***/
+-- Same workflow as above, but instead select from child, alter parent
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo2; SELECT pg_sleep(30);" > /dev/null 2>&1 &
+SELECT pg_sleep(1);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+SELECT signal, successful, state, query, reported, pg_sleep(1)
+FROM pgl_ddl_deploy.kill_blockers('terminate','public','foo');
+  signal   | successful | state  |                         query                          | reported | pg_sleep 
+-----------+------------+--------+--------------------------------------------------------+----------+----------
+ terminate | t          | active | BEGIN; SELECT * FROM public.foo2; SELECT pg_sleep(30); | f        | 
+(1 row)
+
+/*** With <=1.5, it showed this.  But it should kill the process.
+ signal | successful | state | query | reported | pg_sleep
+--------+------------+-------+-------+----------+----------
+(0 rows)
+***/
+/*** TEST FKEY RELATED TABLE BLOCKER KILLER ***/
+-- Same workflow as above, but instead select from a table which has an fkey reference to foo.id 
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo3; SELECT pg_sleep(30);" > /dev/null 2>&1 &
+SELECT pg_sleep(1);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+SELECT signal, successful, state, query, reported, pg_sleep(1)
+FROM pgl_ddl_deploy.kill_blockers('terminate','public','foo');
+  signal   | successful | state  |                         query                          | reported | pg_sleep 
+-----------+------------+--------+--------------------------------------------------------+----------+----------
+ terminate | t          | active | BEGIN; SELECT * FROM public.foo3; SELECT pg_sleep(30); | f        | 
+(1 row)
+
+/*** With <=1.5, it showed this.  But it should kill the process.
+ signal | successful | state | query | reported | pg_sleep
+--------+------------+-------+-------+----------+----------
+(0 rows)
+***/
+/*** TEST REFERENCED BY TABLE BLOCKER KILLER ***/
+-- Same workflow as above, but instead select from a table which has a pkey (foo) which is referenced by another table being altered (foo3) 
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(30);" > /dev/null 2>&1 &
+SELECT pg_sleep(1);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+SELECT signal, successful, state, query, reported, pg_sleep(1)
+FROM pgl_ddl_deploy.kill_blockers('terminate','public','foo3');
+  signal   | successful | state  |                         query                         | reported | pg_sleep 
+-----------+------------+--------+-------------------------------------------------------+----------+----------
+ terminate | t          | active | BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(30); | f        | 
+(1 row)
+
+/*** With <=1.5, it showed this.  But it should kill the process.
+ signal | successful | state | query | reported | pg_sleep
+--------+------------+-------+-------+----------+----------
+(0 rows)
+***/
+SET lock_timeout TO 1000;
 DROP TABLE public.foo CASCADE;
+-- With <=1.5, lock is still in place leading to ERROR:  canceling statement due to lock timeout
+DROP TABLE public.foo3 CASCADE;
+-- With <=1.5, lock is still in place leading to ERROR:  canceling statement due to lock timeout
 TABLE bar;
  id | bla 
 ----+-----
@@ -303,16 +372,16 @@ TABLE bar;
 (2 rows)
 
 DROP TABLE public.bar CASCADE;
-SELECT id, signal, successful, state, query, reported
+SELECT signal, successful, state, query, reported
 FROM pgl_ddl_deploy.killed_blockers
-ORDER BY id, query;
- id |  signal   | successful |        state        |                                query                                | reported 
-----+-----------+------------+---------------------+---------------------------------------------------------------------+----------
-  1 | cancel    | t          | active              | BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(30);               | f
-  2 | terminate | t          | active              | BEGIN; ALTER TABLE public.foo DROP COLUMN bar; SELECT pg_sleep(30); | f
-  3 | terminate | t          | active              | BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(30);               | f
-  4 | cancel    | t          | idle in transaction | SELECT * FROM public.foo;                                           | f
-  5 | terminate | t          | idle in transaction | SELECT * FROM public.foo;                                           | f
+ORDER BY signal, query;
+  signal   | successful |        state        |                                query                                | reported 
+-----------+------------+---------------------+---------------------------------------------------------------------+----------
+ cancel    | t          | active              | BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(30);               | f
+ cancel    | t          | idle in transaction | SELECT * FROM public.foo;                                           | f
+ terminate | t          | active              | BEGIN; ALTER TABLE public.foo DROP COLUMN bar; SELECT pg_sleep(30); | f
+ terminate | t          | active              | BEGIN; SELECT * FROM public.foo; SELECT pg_sleep(30);               | f
+ terminate | t          | idle in transaction | SELECT * FROM public.foo;                                           | f
 (5 rows)
 
 SELECT pg_sleep(1);

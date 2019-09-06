@@ -52,9 +52,9 @@ BEGIN;
 INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex)
 VALUES ('temp_1', '.*');
 SELECT create_tags, drop_tags FROM pgl_ddl_deploy.set_configs WHERE set_name = 'temp_1';
-                                                                                    create_tags                                                                                     |                                      drop_tags                                       
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+--------------------------------------------------------------------------------------
- {"ALTER TABLE","CREATE SEQUENCE","ALTER SEQUENCE","CREATE SCHEMA","CREATE TABLE","CREATE FUNCTION","ALTER FUNCTION","CREATE TYPE","ALTER TYPE","CREATE VIEW","ALTER VIEW",COMMENT} | {"DROP SCHEMA","DROP TABLE","DROP FUNCTION","DROP TYPE","DROP VIEW","DROP SEQUENCE"}
+                                                                                                            create_tags                                                                                                            |                                      drop_tags                                       
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+--------------------------------------------------------------------------------------
+ {"ALTER TABLE","CREATE SEQUENCE","ALTER SEQUENCE","CREATE SCHEMA","CREATE TABLE","CREATE FUNCTION","ALTER FUNCTION","CREATE TYPE","ALTER TYPE","CREATE VIEW","ALTER VIEW",COMMENT,"CREATE RULE","CREATE TRIGGER","ALTER TRIGGER"} | {"DROP SCHEMA","DROP TABLE","DROP FUNCTION","DROP TYPE","DROP VIEW","DROP SEQUENCE"}
 (1 row)
 
 ROLLBACK;
