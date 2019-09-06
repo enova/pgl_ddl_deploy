@@ -100,14 +100,6 @@ INNER JOIN pg_stat_activity a on l.pid = a.pid
 LEFT JOIN pg_inherits pi ON pi.inhrelid = c.oid
 LEFT JOIN pg_class ipc on ipc.oid = pi.inhparent
 LEFT JOIN pg_namespace ipn on ipn.oid = ipc.relnamespace
--- We need to check if there is a lock on a table with an fkey reference to this table 
-LEFT JOIN pg_constraint cr ON cr.conrelid = c.oid
-LEFT JOIN pg_class crc ON crc.oid = cr.confrelid
-LEFT JOIN pg_namespace crn ON crn.oid = crc.relnamespace
--- We need to check if there is a lock on a table with a pkey that is referenced by this table 
-LEFT JOIN pg_constraint cf ON cf.confrelid = c.oid
-LEFT JOIN pg_class cfc ON cfc.oid = cf.conrelid
-LEFT JOIN pg_namespace cfn ON cfn.oid = cfc.relnamespace
 -- We do not exclude either postgres user or pglogical processes, because we even want to cancel autovac blocks.
 -- It should not be possible to contend with pglogical write processes (at least as of pglogical 2.2), because
 -- these run single-threaded using the same process that is doing the DDL and already holds any lock it needs
@@ -116,9 +108,7 @@ WHERE NOT a.pid = pg_backend_pid()
 -- both nspname and relname will be an empty string, thus a no-op, if for some reason one or the other
 -- is not found on the provider side in pg_event_trigger_ddl_commands().  This is a safety mechanism!
 AND ((n.nspname = p_nspname AND c.relname = p_relname)
-OR (ipn.nspname = p_nspname AND ipc.relname = p_relname)
-OR (crn.nspname = p_nspname AND crc.relname = p_relname)
-OR (cfn.nspname = p_nspname AND cfc.relname = p_relname))
+OR (ipn.nspname = p_nspname AND ipc.relname = p_relname))
 AND a.datname = current_database()
 AND c.relkind = 'r'
 AND l.locktype = 'relation'
