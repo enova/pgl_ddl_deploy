@@ -5,7 +5,8 @@ DATA = pgl_ddl_deploy--1.0.sql pgl_ddl_deploy--1.0--1.1.sql \
         pgl_ddl_deploy--1.3.sql pgl_ddl_deploy--1.3--1.4.sql \
         pgl_ddl_deploy--1.4.sql pgl_ddl_deploy--1.4--1.5.sql \
         pgl_ddl_deploy--1.5.sql pgl_ddl_deploy--1.5--1.6.sql \
-        pgl_ddl_deploy--1.6.sql
+        pgl_ddl_deploy--1.6.sql pgl_ddl_deploy--1.6--1.7.sql \
+        pgl_ddl_deploy--1.7.sql
 MODULES = pgl_ddl_deploy ddl_deparse
 
 REGRESS := 01_create_ext 02_setup 03_add_configs 04_deploy 04_deploy_update \

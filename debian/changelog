@@ -1,3 +1,10 @@
+pgl-ddl-deploy (1.7.0-1) unstable; urgency=medium
+
+  * Support for Postgres 12
+  * Support for pglogical 2.3.0
+
+ -- Michael Elterman <melterman@enova.com>  Mon, 16 Mar 2020 15:37:28 -0500
+
 pgl-ddl-deploy (1.6.0-1) unstable; urgency=critical (fixes compatibility with pglogical 2.2.2)
 
   * Fix incompatibility with pglogical 2.2.2

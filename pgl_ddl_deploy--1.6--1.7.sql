@@ -1,3 +1,8 @@
+/* pgl_ddl_deploy--1.6--1.7.sql */
+
+-- complain if script is sourced in psql, rather than via CREATE EXTENSION
+\echo Use "CREATE EXTENSION pgl_ddl_deploy" to load this file. \quit
+
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.add_role(p_roleoid oid)
  RETURNS boolean
  LANGUAGE plpgsql
@@ -41,3 +46,5 @@ RETURN false;
 END;
 $function$
 ;
+
+

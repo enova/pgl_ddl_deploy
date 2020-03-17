@@ -117,6 +117,11 @@ get_altertable_subcmdtypes(PG_FUNCTION_ARGS)
 			case AT_DropNotNull:
 				strtype = "DROP NOT NULL";
 				break;
+#if PG_VERSION_NUM >= 120000
+			case AT_CheckNotNull:
+				strtype = "CHECK NOT NULL";
+				break;
+#endif
 			case AT_SetNotNull:
 				strtype = "SET NOT NULL";
 				break;
@@ -198,12 +203,14 @@ get_altertable_subcmdtypes(PG_FUNCTION_ARGS)
 			case AT_SetUnLogged:
 				strtype = "SET UNLOGGED";
 				break;
+#if PG_VERSION_NUM < 120000
 			case AT_AddOids:
 				strtype = "ADD OIDS";
 				break;
 			case AT_AddOidsRecurse:
 				strtype = "ADD OIDS (and recurse)";
 				break;
+#endif
 			case AT_DropOids:
 				strtype = "DROP OIDS";
 				break;

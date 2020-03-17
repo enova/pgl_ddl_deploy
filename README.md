@@ -35,6 +35,11 @@ https://innovation.enova.com/pursuing-postgres-ddl-replication/
 
 # <a name="release_notes"></a>Release Notes
 
+### Release 1.7
+Summary of changes:
+* Support for Postgres 12
+* Support for pglogical 2.3.0
+
 ### Release 1.6
 Summary of changes:
 * Workaround pglogical 2.2.2 failure resulting from unstable `debug_query_string` results
