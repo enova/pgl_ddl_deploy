@@ -1,6 +1,6 @@
 # pgl_ddl_deploy extension
 comment = 'automated ddl deployment using pglogical'
 module_pathname = '$libdir/pgl_ddl_deploy'
-default_version = '1.6'
+default_version = '1.7'
 schema = 'pgl_ddl_deploy'
 requires = 'pglogical'
