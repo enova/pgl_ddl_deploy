@@ -5,6 +5,7 @@ pgl-ddl-deploy (1.7.0-2) UNRELEASED; urgency=low
   * Set debhelper-compat version in Build-Depends.
   * Set upstream metadata fields: Bug-Database, Bug-Submit, Repository,
     Repository-Browse.
+  * Update standards version to 4.2.1, no changes needed.
 
  -- Debian Janitor <janitor@jelmer.uk>  Thu, 04 Jun 2020 18:27:15 -0000
 
