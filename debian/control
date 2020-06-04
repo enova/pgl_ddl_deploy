@@ -31,4 +31,3 @@ Architecture: any
 Depends: postgresql-11, postgresql-11-pglogical, ${shlibs:Depends}, ${misc:Depends}
 Description: Transparent DDL replication for PostgreSQL
  Automated DDL deployment using PgLogical for PostgreSQL 11.
-
