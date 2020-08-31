@@ -2,33 +2,14 @@ Source: pgl-ddl-deploy
 Section: database
 Priority: optional
 Maintainer: Jeremy Finzel <jfinzel@enova.com>
-Build-Depends: debhelper (>= 9), libpq-dev, postgresql-common, postgresql-server-dev-all
-Standards-Version: 4.2.0
+Build-Depends: debhelper-compat (= 12), libpq-dev, postgresql-common, postgresql-server-dev-all
+Standards-Version: 4.2.1
 Homepage: https://github.com/enova/pgl_ddl_deploy
 Vcs-Browser: https://github.com/enova/pgl_ddl_deploy
 Vcs-Git: https://github.com/enova/pgl_ddl_deploy.git
 
-Package: postgresql-9.5-pgl-ddl-deploy
+Package: postgresql-12-pgl-ddl-deploy
 Architecture: any
-Depends: postgresql-9.5, postgresql-9.5-pglogical, ${shlibs:Depends}, ${misc:Depends}
+Depends: postgresql-12, postgresql-12-pglogical, ${shlibs:Depends}, ${misc:Depends}
 Description: Transparent DDL replication for PostgreSQL
- Automated DDL deployment using PgLogical for PostgreSQL 9.5.
-
-Package: postgresql-9.6-pgl-ddl-deploy
-Architecture: any
-Depends: postgresql-9.6, postgresql-9.6-pglogical, ${shlibs:Depends}, ${misc:Depends}
-Description: Transparent DDL replication for PostgreSQL
- Automated DDL deployment using PgLogical for PostgreSQL 9.6.
-
-Package: postgresql-10-pgl-ddl-deploy
-Architecture: any
-Depends: postgresql-10, postgresql-10-pglogical, ${shlibs:Depends}, ${misc:Depends}
-Description: Transparent DDL replication for PostgreSQL
- Automated DDL deployment using PgLogical for PostgreSQL 10.
-
-Package: postgresql-11-pgl-ddl-deploy
-Architecture: any
-Depends: postgresql-11, postgresql-11-pglogical, ${shlibs:Depends}, ${misc:Depends}
-Description: Transparent DDL replication for PostgreSQL
- Automated DDL deployment using PgLogical for PostgreSQL 11.
-
+ Automated DDL deployment using PgLogical for PostgreSQL 12.
