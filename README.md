@@ -35,6 +35,13 @@ https://innovation.enova.com/pursuing-postgres-ddl-replication/
 
 # <a name="release_notes"></a>Release Notes
 
+### Release 2.0
+Summary of changes:
+* Support for DDL replication using Native Logical Replication
+* Support for swapping existing pgl_ddl_deploy configs from pglogical to native
+* Support for Postgres 13
+* Support tests removed for any version prior to 1.4
+
 ### Release 1.7
 Summary of changes:
 * Support for Postgres 12

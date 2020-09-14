@@ -40,11 +40,10 @@ IF (SELECT extversion FROM pg_extension WHERE extname = 'pgl_ddl_deploy') = ANY(
     INNER JOIN pglogical.replication_set rs USING (set_id)
     ORDER BY set_name::TEXT, set_reloid::TEXT;$$;
 ELSE
-    RETURN QUERY EXECUTE $$ 
-    SELECT set_name::TEXT, set_reloid::TEXT AS table_name
+    RETURN QUERY EXECUTE $$
+    SELECT name::TEXT AS set_name, relid::regclass::TEXT AS table_name
     FROM pgl_ddl_deploy.rep_set_table_wrapper() rsr
-    INNER JOIN pglogical.replication_set rs USING (set_id)
-    ORDER BY set_name::TEXT, set_reloid::TEXT;$$;
+    ORDER BY name::TEXT, relid::TEXT;$$;
 END IF;
 
 END;

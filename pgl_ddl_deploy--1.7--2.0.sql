@@ -1,3 +1,630 @@
+/* pgl_ddl_deploy--1.7--2.0.sql */
+
+-- complain if script is sourced in psql, rather than via CREATE EXTENSION
+\echo Use "CREATE EXTENSION pgl_ddl_deploy" to load this file. \quit
+
+CREATE TYPE pgl_ddl_deploy.driver AS ENUM ('pglogical', 'native');
+-- Not possible that any existing config would be native, so:
+ALTER TABLE pgl_ddl_deploy.set_configs ADD COLUMN driver pgl_ddl_deploy.driver NOT NULL DEFAULT 'pglogical';
+DROP FUNCTION pgl_ddl_deploy.rep_set_table_wrapper();
+DROP FUNCTION pgl_ddl_deploy.deployment_check_count(integer, text, text);
+DROP FUNCTION pgl_ddl_deploy.subscriber_command
+(
+  p_provider_name NAME,
+  p_set_name TEXT[],
+  p_nspname NAME,
+  p_relname NAME,
+  p_ddl_sql_sent TEXT,
+  p_full_ddl TEXT,
+  p_pid INT,
+  p_set_config_id INT,
+  p_queue_subscriber_failures BOOLEAN,
+  p_signal_blocking_subscriber_sessions pgl_ddl_deploy.signals,
+  p_lock_timeout INT,
+-- This parameter currently only exists to make testing this function easier
+  p_run_anywhere BOOLEAN
+);
+
+CREATE TABLE pgl_ddl_deploy.queue(
+queued_at timestamp with time zone not null,
+role name not null,
+pubnames text[],
+message_type "char" not null,
+message json not null
+);
+COMMENT ON TABLE pgl_ddl_deploy.queue IS 'Modeled on the pglogical.queue table for native logical replication ddl';
+
+-- NOTE - this duplicates execute_queued_ddl.sql function file but is executed here for the upgrade/build path
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.execute_queued_ddl()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+
+/***
+Native logical replication does not support row filtering, so as a result,
+we need to do processing downstream to ensure we only process rows we care about.
+
+For example, if we propagate some DDL to system 1 and some other to system 2,
+all rows will still come through this trigger.  We filter out rows based on
+matching pubnames with pg_subscription.subpublications
+
+If a row arrives here (the subscriber), it must mean that it was propagated
+***/
+
+IF NEW.message_type = pgl_ddl_deploy.queue_ddl_message_type() AND
+    (SELECT COUNT(1) FROM pg_subscription s
+    WHERE subpublications && NEW.pubnames) > 0 THEN
+
+    EXECUTE 'SET ROLE '||quote_ident(NEW.role)||';';
+    EXECUTE NEW.message::TEXT;
+
+    RETURN NEW;
+ELSE
+    RETURN NULL;
+END IF;
+
+END;
+$function$
+;
+
+CREATE TRIGGER execute_queued_ddl
+BEFORE INSERT ON pgl_ddl_deploy.queue
+FOR EACH ROW EXECUTE PROCEDURE pgl_ddl_deploy.execute_queued_ddl();
+
+-- This must only fire on the replica
+ALTER TABLE pgl_ddl_deploy.queue ENABLE REPLICA TRIGGER execute_queued_ddl;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.replicate_ddl_command(command text, pubnames text[]) 
+ RETURNS BOOLEAN 
+ LANGUAGE plpgsql
+AS $function$
+-- Modeled after pglogical's replicate_ddl_command but in support of native logical replication
+BEGIN
+
+INSERT INTO pgl_ddl_deploy.queue (queued_at, role, pubnames, message_type, message)
+VALUES (now(), current_role, pubnames, pgl_ddl_deploy.queue_ddl_message_type(), command);
+
+RETURN TRUE;
+
+END;
+$function$
+;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.add_table_to_replication(p_driver pgl_ddl_deploy.driver, p_set_name name, p_relation regclass, p_synchronize_data boolean DEFAULT false)
+ RETURNS BOOLEAN 
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_schema NAME;
+    v_table NAME;
+    v_result BOOLEAN = false;
+BEGIN
+IF p_driver = 'pglogical' THEN
+
+    SELECT pglogical.replication_set_add_table(
+            set_name:=p_set_name
+            ,relation:=p_relation
+            ,synchronize_data:=p_synchronize_data
+          ) INTO v_result;
+
+ELSEIF p_driver = 'native' THEN
+
+    SELECT nspname, relname INTO v_schema, v_table
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.oid = p_relation::OID;
+
+    EXECUTE 'ALTER PUBLICATION '||quote_ident(p_set_name)||' ADD TABLE '||quote_ident(v_schema)||'.'||quote_ident(v_name)||';';
+    
+    -- We use true to synchronize data here, not taking the value from p_synchronize_data.  This is because of the different way
+    -- that native logical works, and that changes are not queued from the time of the table being added to replication.  Thus, we
+    -- by default WILL use COPY_DATA = true
+    PERFORM pgl_ddl_deploy.replicate_ddl_command($$SELECT pgl_ddl_deploy.notify_subscription_refresh('$$||p_set_name||$$', true);$$);
+    v_result = true;
+
+ELSE
+
+RAISE EXCEPTION 'Unsupported driver specified';
+
+END IF;
+
+RETURN v_result;
+
+END;
+$function$
+;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.notify_subscription_refresh(p_set_name name, p_copy_data boolean DEFAULT TRUE)
+ RETURNS BOOLEAN 
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_rec RECORD;
+    v_sql TEXT;
+BEGIN
+
+    FOR v_rec IN
+        SELECT unnest(subpublications) AS pubname, subname
+        FROM pg_subscription
+        WHERE subpublications && p_set_name::text[] 
+    LOOP
+
+    v_sql = $$ALTER SUBSCRIPTION $$||quote_ident(subname)||$$ REFRESH PUBLICATION WITH ( COPY_DATA = '$$||p_copy_data||$$');$$;
+    RAISE LOG 'pgl_ddl_deploy executing: '||v_sql;
+    EXECUTE v_sql;
+
+    END LOOP;
+
+RETURN TRUE;
+
+END;
+$function$
+;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.rep_set_table_wrapper()
+ RETURNS TABLE (id OID, relid REGCLASS, name NAME, driver pgl_ddl_deploy.driver)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+/*****
+This handles the rename of pglogical.replication_set_relation to pglogical.replication_set_table from version 1 to 2
+ */
+BEGIN
+
+IF current_setting('server_version_num')::INT < 100000 THEN 
+    IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'pglogical' AND tablename = 'replication_set_table') THEN
+        RETURN QUERY
+        SELECT r.set_id AS id, r.set_reloid AS relid, rs.set_name AS name, 'pglogical'::pgl_ddl_deploy.driver AS driver
+        FROM pglogical.replication_set_table r
+        JOIN pglogical.replication_set rs USING (set_id);
+
+    ELSEIF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'pglogical' AND tablename = 'replication_set_relation') THEN
+        RETURN QUERY
+        SELECT r.set_id AS id, r.set_reloid AS relid, rs.set_name AS name, 'pglogical'::pgl_ddl_deploy.driver AS driver
+        FROM pglogical.replication_set_relation r
+        JOIN pglogical.replication_set rs USING (set_id);
+
+    ELSE
+        RAISE EXCEPTION 'No table pglogical.replication_set_relation or pglogical.replication_set_table found';
+    END IF;
+
+ELSE
+    IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pglogical') THEN
+        RETURN QUERY
+        SELECT p.oid AS id, prrelid AS relid, pubname AS name, 'native'::pgl_ddl_deploy.driver AS driver
+        FROM pg_publication p
+        JOIN pg_publication_rel ppr ON ppr.prpubid = p.oid;
+
+    ELSEIF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'pglogical' AND tablename = 'replication_set_table') THEN
+        RETURN QUERY
+        SELECT r.set_id AS id, r.set_reloid AS relid, rs.set_name AS name, 'pglogical'::pgl_ddl_deploy.driver AS driver
+        FROM pglogical.replication_set_table r
+        JOIN pglogical.replication_set rs USING (set_id)
+        UNION ALL
+        SELECT p.oid AS id, prrelid AS relid, pubname AS name, 'native'::pgl_ddl_deploy.driver AS driver
+        FROM pg_publication p
+        JOIN pg_publication_rel ppr ON ppr.prpubid = p.oid;
+
+    ELSEIF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'pglogical' AND tablename = 'replication_set_relation') THEN
+        RETURN QUERY
+        SELECT r.set_id AS id, r.set_reloid AS relid, rs.set_name AS name, 'pglogical'::pgl_ddl_deploy.driver AS driver 
+        FROM pglogical.replication_set_relation r
+        JOIN pglogical.replication_set rs USING (set_id)
+        UNION ALL
+        SELECT p.oid AS id, prrelid AS relid, pubname AS name, 'native'::pgl_ddl_deploy.driver AS driver
+        FROM pg_publication p
+        JOIN pg_publication_rel ppr ON ppr.prpubid = p.oid;
+    END IF;
+END IF;
+
+END;
+$function$
+;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.rep_set_wrapper()
+ RETURNS TABLE (id OID, name NAME, driver pgl_ddl_deploy.driver)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+/*****
+This handles the rename of pglogical.replication_set_relation to pglogical.replication_set_table from version 1 to 2
+ */
+BEGIN
+
+IF current_setting('server_version_num')::INT < 100000 THEN 
+    IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'pglogical') THEN
+        RETURN QUERY
+        SELECT set_id AS id, set_name AS name, 'pglogical'::pgl_ddl_deploy.driver AS driver
+        FROM pglogical.replication_set rs;
+
+    ELSE
+        RAISE EXCEPTION 'pglogical required for version prior to Postgres 10';
+    END IF;
+
+ELSE
+    IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pglogical') THEN
+        RETURN QUERY
+        SELECT p.oid AS id, pubname AS name, 'native'::pgl_ddl_deploy.driver AS driver
+        FROM pg_publication p;
+
+    ELSEIF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'pglogical') THEN
+        RETURN QUERY
+        SELECT set_id AS id, set_name AS name, 'pglogical'::pgl_ddl_deploy.driver AS driver
+        FROM pglogical.replication_set rs
+        UNION ALL
+        SELECT p.oid AS id, pubname AS name, 'native'::pgl_ddl_deploy.driver AS driver
+        FROM pg_publication p;
+    ELSE
+        RAISE EXCEPTION 'Unexpected exception';
+    END IF;
+
+
+END IF;
+
+END;
+$function$
+;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.deployment_check_count(p_set_config_id integer, p_set_name text, p_include_schema_regex text, p_driver pgl_ddl_deploy.driver)
+ RETURNS boolean
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_count INT;
+  c_exclude_always TEXT = pgl_ddl_deploy.exclude_regex();
+BEGIN
+
+--If the check is not applicable, pass it
+IF p_set_config_id IS NULL THEN
+  RETURN TRUE;
+END IF;
+
+SELECT COUNT(1)
+INTO v_count
+FROM pg_namespace n
+  INNER JOIN pg_class c ON n.oid = c.relnamespace
+    AND c.relpersistence = 'p'
+  WHERE n.nspname ~* p_include_schema_regex
+    AND n.nspname !~* c_exclude_always
+    AND EXISTS (SELECT 1
+    FROM pg_index i
+    WHERE i.indrelid = c.oid
+      AND i.indisprimary)
+    AND NOT EXISTS
+    (SELECT 1
+    FROM pgl_ddl_deploy.rep_set_table_wrapper() rsr
+    WHERE rsr.name = p_set_name
+      AND rsr.relid = c.oid
+      AND rsr.driver = p_driver);
+
+IF v_count > 0 THEN
+  RAISE WARNING $ERR$
+  Deployment of auto-replication for id % set_name % failed
+  because % tables are already queued to be added to replication
+  based on your configuration.  These tables need to be added to
+  replication manually and synced, otherwise change your configuration.
+  Debug query: %$ERR$,
+    p_set_config_id,
+    p_set_name,
+    v_count,
+    $SQL$
+    SELECT n.nspname, c.relname
+    FROM pg_namespace n
+      INNER JOIN pg_class c ON n.oid = c.relnamespace
+        AND c.relpersistence = 'p'
+      WHERE n.nspname ~* '$SQL$||p_include_schema_regex||$SQL$'
+        AND n.nspname !~* '$SQL$||c_exclude_always||$SQL$'
+        AND EXISTS (SELECT 1
+        FROM pg_index i
+        WHERE i.indrelid = c.oid
+          AND i.indisprimary)
+        AND NOT EXISTS
+        (SELECT 1
+        FROM pgl_ddl_deploy.rep_set_table_wrapper() rsr
+        WHERE rsr.name = '$SQL$||p_set_name||$SQL$'
+          AND rsr.relid = c.oid
+          AND rsr.driver = '$SQL$||p_driver||$SQL$');
+    $SQL$;
+    RETURN FALSE;
+END IF;
+
+RETURN TRUE;
+
+END;
+$function$
+;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.deployment_check_wrapper(p_set_config_id integer, p_set_name text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_count INT;
+  c_exclude_always TEXT = pgl_ddl_deploy.exclude_regex();
+  c_set_config_id INT;
+  c_include_schema_regex TEXT;
+  v_include_only_repset_tables BOOLEAN;
+  v_ddl_only_replication BOOLEAN;
+  c_set_name TEXT;
+  v_driver pgl_ddl_deploy.driver;
+BEGIN
+
+IF p_set_config_id IS NOT NULL AND p_set_name IS NOT NULL THEN
+    RAISE EXCEPTION 'This function can only be called with one of the two arguments set.';
+END IF;
+
+IF NOT EXISTS (SELECT 1 FROM pgl_ddl_deploy.set_configs WHERE ((p_set_name is null and id = p_set_config_id) OR (p_set_config_id is null and set_name = p_set_name))) THEN
+  RETURN FALSE;                                               
+END IF;
+
+/***
+  This check is only applicable to NON-include_only_repset_tables and sets using CREATE TABLE events.
+  It is also bypassed if ddl_only_replication is true in which we never auto-add tables to replication.
+  We re-assign set_config_id because we want to know if no records are found, leading to NULL
+*/
+SELECT id, include_schema_regex, set_name, include_only_repset_tables, ddl_only_replication, driver
+INTO c_set_config_id, c_include_schema_regex, c_set_name, v_include_only_repset_tables, v_ddl_only_replication, v_driver
+FROM pgl_ddl_deploy.set_configs
+WHERE ((p_set_name is null and id = p_set_config_id)
+  OR (p_set_config_id is null and set_name = p_set_name))
+  AND create_tags && '{"CREATE TABLE"}'::TEXT[];
+
+IF v_include_only_repset_tables OR v_ddl_only_replication THEN
+    RETURN TRUE;
+END IF;
+
+RETURN pgl_ddl_deploy.deployment_check_count(c_set_config_id, c_set_name, c_include_schema_regex, v_driver);
+
+END;
+$function$;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.is_subscriber(p_driver pgl_ddl_deploy.driver, p_name TEXT[], p_provider_name NAME = NULL)
+ RETURNS boolean
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+
+IF p_driver = 'pglogical' THEN
+
+    RETURN EXISTS (SELECT 1
+                  FROM pglogical.subscription s
+                  INNER JOIN pglogical.node n
+                    ON n.node_id = s.sub_origin
+                    AND n.node_name = p_provider_name
+                  WHERE sub_replication_sets && p_name);
+
+ELSEIF p_driver = 'native' THEN
+
+    RETURN EXISTS (SELECT 1
+                  FROM pg_subscription s
+                  WHERE subpublications && p_name);
+
+ELSE
+
+RAISE EXCEPTION 'Unsupported driver specified';
+
+END IF;
+
+END;
+$function$
+;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.subscriber_command
+(
+  p_provider_name NAME,
+  p_set_name TEXT[],
+  p_nspname NAME,
+  p_relname NAME,
+  p_ddl_sql_sent TEXT,
+  p_full_ddl TEXT,
+  p_pid INT,
+  p_set_config_id INT,
+  p_queue_subscriber_failures BOOLEAN,
+  p_signal_blocking_subscriber_sessions pgl_ddl_deploy.signals,
+  p_lock_timeout INT,
+  p_driver pgl_ddl_deploy.driver,
+-- This parameter currently only exists to make testing this function easier
+  p_run_anywhere BOOLEAN = FALSE
+)
+RETURNS BOOLEAN
+AS $pgl_ddl_deploy_sql$
+/****
+This function is what will actually be executed on the subscriber when attempting to apply DDL
+changed.  It is sent to subscriber(s) via pglogical.replicate_ddl_command.  You can see how it
+is called based on the the view pgl_ddl_deploy.event_trigger_schema, which is used to create the
+specific event trigger functions that will call this function in different ways depending on
+configuration in pgl_ddl_deploy.set_configs.
+
+This function is also used to make testing easier.  The regression suite calls
+this function to verify basic functionality. 
+****/
+DECLARE
+  v_succeeded BOOLEAN;
+  v_error_message TEXT;
+  v_attempt_number INT = 0;
+  v_signal pgl_ddl_deploy.signals; 
+BEGIN
+
+IF pgl_ddl_deploy.is_subscriber(p_driver, p_set_name, p_provider_name) OR p_run_anywhere THEN
+
+    v_error_message = NULL;
+    /****
+    If we have configured to kill blocking subscribers, here we set parameters for that:
+        1. Whether to cancel or terminate
+        2. What lock_timeout to tolerate 
+    ****/
+    IF p_signal_blocking_subscriber_sessions IS NOT NULL THEN
+      v_signal = CASE WHEN p_signal_blocking_subscriber_sessions = 'cancel_then_terminate' THEN 'cancel' ELSE p_signal_blocking_subscriber_sessions END; 
+    -- We cannot RESET LOCAL lock_timeout but that should not be necessary because it will end with the transaction
+      EXECUTE format('SET LOCAL lock_timeout TO %s', p_lock_timeout);
+    END IF;
+
+    /****
+    Loop until one of the following takes place:
+        1. Successful DDL execution on first attempt 
+        2. An unexpected ERROR occurs, which will either RAISE or finish with WARNING based on queue_subscriber_failures configuration 
+        3. Blocking sessions are killed until we finally get a successful DDL execution
+    ****/
+    WHILE TRUE LOOP
+    BEGIN
+
+     --Execute DDL
+     RAISE LOG 'pgl_ddl_deploy attempting execution: %', p_full_ddl;
+     
+    --Execute DDL - the reason we use execute here is partly to handle no trailing semicolon
+     EXECUTE p_full_ddl;
+
+     v_succeeded = TRUE;
+     EXIT;
+
+    EXCEPTION
+      WHEN lock_not_available THEN
+        IF p_signal_blocking_subscriber_sessions IS NOT NULL THEN
+          -- Change to terminate if we are using cancel_then_terminate and have not been successful after the first iteration 
+          IF v_attempt_number > 0 AND p_signal_blocking_subscriber_sessions = 'cancel_then_terminate' AND v_signal = 'cancel' THEN
+            v_signal = 'terminate';
+          END IF;
+          INSERT INTO pgl_ddl_deploy.killed_blockers
+            (signal,
+            successful,
+            pid,
+            executed_at,
+            usename,
+            client_addr,
+            xact_start,
+            state_change,
+            state,
+            query,
+            reported)
+          SELECT
+            signal,
+            successful,
+            pid,
+            executed_at,
+            usename,
+            client_addr,
+            xact_start,
+            state_change,
+            state,
+            query,
+            reported
+          FROM pgl_ddl_deploy.kill_blockers(
+            v_signal,
+            p_nspname,
+            p_relname
+          );
+
+          -- Continue and retry again but allow a brief pause
+          v_attempt_number = v_attempt_number + 1;
+          PERFORM pg_sleep(3);
+        ELSE
+          -- If p_signal_blocking_subscriber_sessions is not configured but we hit a lock_timeout,
+          -- then the replication user or cluster is configured with a global lock_timeout.  Raise in this case.
+          RAISE;
+        END IF;
+      WHEN OTHERS THEN
+        IF p_queue_subscriber_failures THEN
+          RAISE WARNING 'Subscriber DDL failed with errors (see pgl_ddl_deploy.subscriber_logs): %', SQLERRM;
+          v_succeeded = FALSE;
+          v_error_message = SQLERRM;
+          EXIT;
+        ELSE
+          RAISE;
+        END IF;
+    END;
+    END LOOP;
+
+    /****
+    Since this function is only executed on the subscriber, this INSERT adds a log
+    to subscriber_logs on the subscriber after execution.
+
+    Note that if we configured queue_subscriber_failures to TRUE in pgl_ddl_deploy.set_configs, then we are
+    allowing failed DDL to be caught and logged in this table as succeeded = FALSE for later processing.
+    ****/
+    INSERT INTO pgl_ddl_deploy.subscriber_logs
+    (set_name,
+     provider_pid,
+     provider_node_name,
+     provider_set_config_id,
+     executed_as_role,
+     subscriber_pid,
+     executed_at,
+     ddl_sql,
+     full_ddl_sql,
+     succeeded,
+     error_message)
+    VALUES
+    (p_set_name,
+     p_pid,
+     p_provider_name,
+     p_set_config_id,
+     current_role,
+     pg_backend_pid(),
+     current_timestamp,
+     p_ddl_sql_sent,
+     p_full_ddl,
+     v_succeeded,
+     v_error_message);
+
+END IF;
+
+RETURN v_succeeded;
+
+END;
+$pgl_ddl_deploy_sql$
+LANGUAGE plpgsql VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.queue_message_type()
+ RETURNS "char" 
+ LANGUAGE sql
+ IMMUTABLE
+AS $function$
+SELECT 'Q'::"char";
+$function$
+;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.provider_node_name(p_driver pgl_ddl_deploy.driver)
+ RETURNS NAME 
+ LANGUAGE plpgsql
+AS $function$
+DECLARE v_node_name NAME;
+BEGIN
+
+IF p_driver = 'pglogical' THEN
+
+    SELECT n.node_name INTO v_node_name
+    FROM pglogical.node n
+    INNER JOIN pglogical.local_node ln
+    USING (node_id);
+    RETURN v_node_name;
+
+ELSEIF p_driver = 'native' THEN
+
+    RETURN NULL::NAME; 
+
+ELSE
+
+RAISE EXCEPTION 'Unsupported driver specified';
+
+END IF;
+
+END;
+$function$
+;
+
+
 CREATE OR REPLACE VIEW pgl_ddl_deploy.event_trigger_schema AS
 WITH vars AS
 (SELECT
@@ -692,3 +1319,5 @@ SELECT
         AND evtenabled IN('O','R','A')
     ) AS is_deployed
 FROM build b;
+
+

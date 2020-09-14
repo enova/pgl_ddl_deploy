@@ -10,8 +10,7 @@ SELECT pgl_ddl_deploy.deploy('testspecial');
 CREATE TEMP VIEW tables_in_replication AS 
 SELECT COUNT(1)
 FROM pgl_ddl_deploy.rep_set_table_wrapper() t
-INNER JOIN pglogical.replication_set rs USING (set_id)
-WHERE rs.set_name = 'testspecial';
+WHERE t.name = 'testspecial';
 
 TABLE tables_in_replication;
 

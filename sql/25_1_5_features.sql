@@ -100,6 +100,7 @@ SELECT pgl_ddl_deploy.subscriber_command
       p_signal_blocking_subscriber_sessions := 'cancel',
     -- Lower lock_timeout to make this test run faster
       p_lock_timeout := 300,
+      p_driver := 'pglogical'::pgl_ddl_deploy.driver,
     -- This parameter is only marked TRUE for this function to be able to easily run on a provider for regression testing
       p_run_anywhere := TRUE
 );
@@ -133,6 +134,7 @@ SELECT pgl_ddl_deploy.subscriber_command
       p_signal_blocking_subscriber_sessions := 'terminate',
     -- Lower lock_timeout to make this test run faster
       p_lock_timeout := 300,
+      p_driver := 'pglogical'::pgl_ddl_deploy.driver,
     -- This parameter is only marked TRUE for this function to be able to easily run on a provider for regression testing
       p_run_anywhere := TRUE
 );
@@ -169,6 +171,7 @@ SELECT pgl_ddl_deploy.subscriber_command
       p_signal_blocking_subscriber_sessions := 'cancel_then_terminate',
     -- Lower lock_timeout to make this test run faster
       p_lock_timeout := 300,
+      p_driver := 'pglogical'::pgl_ddl_deploy.driver,
     -- This parameter is only marked TRUE for this function to be able to easily run on a provider for regression testing
       p_run_anywhere := TRUE
 );

@@ -57,10 +57,9 @@ WARNING:
         AND NOT EXISTS
         (SELECT 1
         FROM pgl_ddl_deploy.rep_set_table_wrapper() rsr
-        INNER JOIN pglogical.replication_set r
-          ON r.set_id = rsr.set_id
-        WHERE r.set_name = 'testtemp'
-          AND rsr.set_reloid = c.oid);
+        WHERE rsr.name = 'testtemp'
+          AND rsr.relid = c.oid
+          AND rsr.driver = 'pglogical');
     
  deploy 
 --------

@@ -10,6 +10,7 @@ DECLARE
   v_include_only_repset_tables BOOLEAN;
   v_ddl_only_replication BOOLEAN;
   c_set_name TEXT;
+  v_driver pgl_ddl_deploy.driver;
 BEGIN
 
 IF p_set_config_id IS NOT NULL AND p_set_name IS NOT NULL THEN
@@ -25,8 +26,8 @@ END IF;
   It is also bypassed if ddl_only_replication is true in which we never auto-add tables to replication.
   We re-assign set_config_id because we want to know if no records are found, leading to NULL
 */
-SELECT id, include_schema_regex, set_name, include_only_repset_tables, ddl_only_replication
-INTO c_set_config_id, c_include_schema_regex, c_set_name, v_include_only_repset_tables, v_ddl_only_replication
+SELECT id, include_schema_regex, set_name, include_only_repset_tables, ddl_only_replication, driver
+INTO c_set_config_id, c_include_schema_regex, c_set_name, v_include_only_repset_tables, v_ddl_only_replication, v_driver
 FROM pgl_ddl_deploy.set_configs
 WHERE ((p_set_name is null and id = p_set_config_id)
   OR (p_set_config_id is null and set_name = p_set_name))
@@ -36,7 +37,7 @@ IF v_include_only_repset_tables OR v_ddl_only_replication THEN
     RETURN TRUE;
 END IF;
 
-RETURN pgl_ddl_deploy.deployment_check_count(c_set_config_id, c_set_name, c_include_schema_regex);
+RETURN pgl_ddl_deploy.deployment_check_count(c_set_config_id, c_set_name, c_include_schema_regex, v_driver);
 
 END;
 $function$;

@@ -10,6 +10,6 @@ Vcs-Git: https://github.com/enova/pgl_ddl_deploy.git
 
 Package: postgresql-PGVERSION-pgl-ddl-deploy
 Architecture: any
-Depends: postgresql-PGVERSION, postgresql-PGVERSION-pglogical, ${shlibs:Depends}, ${misc:Depends}
+Depends: postgresql-PGVERSION, ${shlibs:Depends}, ${misc:Depends}
 Description: Transparent DDL replication for PostgreSQL
  Automated DDL deployment using PgLogical for PostgreSQL PGVERSION.
