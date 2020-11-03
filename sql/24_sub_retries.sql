@@ -2,6 +2,8 @@
 --If adding new tests, it is best to keep this file as the last test before cleanup.
 SET client_min_messages = warning;
 
+SELECT replication_sets, message_type, regexp_replace(message::text, 'p_pid := (\d+)', 'p_pid := ?') as message FROM pglogical.queue ORDER BY queued_at;
+
 --Some day, we should regress with multiple databases.  There are examples of this in pglogical code base
 --For now, we will mock the subscriber behavior, which is less than ideal, because it misses testing execution
 --on subscriber
