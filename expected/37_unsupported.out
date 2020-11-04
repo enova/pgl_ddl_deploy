@@ -1,0 +1,91 @@
+SET client_min_messages TO warning;
+\set VERBOSITY TERSE
+SET ROLE test_pgl_ddl_deploy;
+CREATE TABLE foo AS
+SELECT 1 AS myfield;
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |          ddl_sql_raw           |          ddl_sql_sent          
+----------+--------------------------------+--------------------------------
+ test4    | DROP TABLE foo CASCADE;        | DROP TABLE foo CASCADE;
+ test3    | DROP TABLE foo CASCADE;        | DROP TABLE foo CASCADE;
+ test2    | DROP TABLE foo CASCADE;        | DROP TABLE foo CASCADE;
+ test1    | DROP TABLE foo CASCADE;        | DROP TABLE foo CASCADE;
+ test8    | DROP TABLE foobar.foo CASCADE; | DROP TABLE foobar.foo CASCADE;
+ test7    | DROP TABLE foobar.foo CASCADE; | DROP TABLE foobar.foo CASCADE;
+ test6    | DROP TABLE foobar.foo CASCADE; | DROP TABLE foobar.foo CASCADE;
+ test5    | DROP TABLE foobar.foo CASCADE; | DROP TABLE foobar.foo CASCADE;
+ test4    | DROP TABLE foobar.foo CASCADE; | DROP TABLE foobar.foo CASCADE;
+ test3    | DROP TABLE foobar.foo CASCADE; | DROP TABLE foobar.foo CASCADE;
+(10 rows)
+
+SELECT set_name, ddl_sql_raw, command_tag, reason FROM pgl_ddl_deploy.unhandled ORDER BY id DESC LIMIT 10;
+ set_name |                                 ddl_sql_raw                                 |   command_tag   |          reason          
+----------+-----------------------------------------------------------------------------+-----------------+--------------------------
+ test4    | CREATE TABLE foo AS                                                        +| CREATE TABLE AS | unsupported_command
+          | SELECT 1 AS myfield;                                                        |                 | 
+ test3    | CREATE TABLE foo AS                                                        +| CREATE TABLE AS | unsupported_command
+          | SELECT 1 AS myfield;                                                        |                 | 
+ test2    | CREATE TABLE foo AS                                                        +| CREATE TABLE AS | unsupported_command
+          | SELECT 1 AS myfield;                                                        |                 | 
+ test1    | CREATE TABLE foo AS                                                        +| CREATE TABLE AS | unsupported_command
+          | SELECT 1 AS myfield;                                                        |                 | 
+ test8    | DROP TABLE foo, foobar.foo CASCADE;                                         | DROP TABLE      | mixed_objects
+ test7    | DROP TABLE foo, foobar.foo CASCADE;                                         | DROP TABLE      | mixed_objects
+ test6    | DROP TABLE foo, foobar.foo CASCADE;                                         | DROP TABLE      | mixed_objects
+ test5    | DROP TABLE foo, foobar.foo CASCADE;                                         | DROP TABLE      | mixed_objects
+ test8    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE    | rejected_multi_statement
+ test6    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE    | rejected_multi_statement
+(10 rows)
+
+SELECT 1 AS myfield INTO foobar.foo;
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |          ddl_sql_raw           |          ddl_sql_sent          
+----------+--------------------------------+--------------------------------
+ test4    | DROP TABLE foo CASCADE;        | DROP TABLE foo CASCADE;
+ test3    | DROP TABLE foo CASCADE;        | DROP TABLE foo CASCADE;
+ test2    | DROP TABLE foo CASCADE;        | DROP TABLE foo CASCADE;
+ test1    | DROP TABLE foo CASCADE;        | DROP TABLE foo CASCADE;
+ test8    | DROP TABLE foobar.foo CASCADE; | DROP TABLE foobar.foo CASCADE;
+ test7    | DROP TABLE foobar.foo CASCADE; | DROP TABLE foobar.foo CASCADE;
+ test6    | DROP TABLE foobar.foo CASCADE; | DROP TABLE foobar.foo CASCADE;
+ test5    | DROP TABLE foobar.foo CASCADE; | DROP TABLE foobar.foo CASCADE;
+ test4    | DROP TABLE foobar.foo CASCADE; | DROP TABLE foobar.foo CASCADE;
+ test3    | DROP TABLE foobar.foo CASCADE; | DROP TABLE foobar.foo CASCADE;
+(10 rows)
+
+SELECT set_name, ddl_sql_raw, command_tag, reason FROM pgl_ddl_deploy.unhandled ORDER BY id DESC LIMIT 10;
+ set_name |             ddl_sql_raw              |   command_tag   |       reason        
+----------+--------------------------------------+-----------------+---------------------
+ test8    | SELECT 1 AS myfield INTO foobar.foo; | SELECT INTO     | unsupported_command
+ test7    | SELECT 1 AS myfield INTO foobar.foo; | SELECT INTO     | unsupported_command
+ test6    | SELECT 1 AS myfield INTO foobar.foo; | SELECT INTO     | unsupported_command
+ test5    | SELECT 1 AS myfield INTO foobar.foo; | SELECT INTO     | unsupported_command
+ test4    | SELECT 1 AS myfield INTO foobar.foo; | SELECT INTO     | unsupported_command
+ test3    | SELECT 1 AS myfield INTO foobar.foo; | SELECT INTO     | unsupported_command
+ test2    | SELECT 1 AS myfield INTO foobar.foo; | SELECT INTO     | unsupported_command
+ test1    | SELECT 1 AS myfield INTO foobar.foo; | SELECT INTO     | unsupported_command
+ test4    | CREATE TABLE foo AS                 +| CREATE TABLE AS | unsupported_command
+          | SELECT 1 AS myfield;                 |                 | 
+ test3    | CREATE TABLE foo AS                 +| CREATE TABLE AS | unsupported_command
+          | SELECT 1 AS myfield;                 |                 | 
+(10 rows)
+
+DROP TABLE foo;
+DROP TABLE foobar.foo;
+SELECT * FROM pgl_ddl_deploy.exceptions;
+ id | set_name | pid | executed_at | ddl_sql | err_msg | err_state | set_config_id | resolved | resolved_notes 
+----+----------+-----+-------------+---------+---------+-----------+---------------+----------+----------------
+(0 rows)
+

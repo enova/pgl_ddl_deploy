@@ -28,7 +28,7 @@ IF current_setting('server_version_num')::INT < 100000 THEN
 ELSE
     IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pglogical') THEN
         RETURN QUERY
-        SELECT p.oid AS id, prrelid AS relid, pubname AS name, 'native'::pgl_ddl_deploy.driver AS driver
+        SELECT p.oid AS id, prrelid::REGCLASS AS relid, pubname AS name, 'native'::pgl_ddl_deploy.driver AS driver
         FROM pg_publication p
         JOIN pg_publication_rel ppr ON ppr.prpubid = p.oid;
 
@@ -38,7 +38,7 @@ ELSE
         FROM pglogical.replication_set_table r
         JOIN pglogical.replication_set rs USING (set_id)
         UNION ALL
-        SELECT p.oid AS id, prrelid AS relid, pubname AS name, 'native'::pgl_ddl_deploy.driver AS driver
+        SELECT p.oid AS id, prrelid::REGCLASS AS relid, pubname AS name, 'native'::pgl_ddl_deploy.driver AS driver
         FROM pg_publication p
         JOIN pg_publication_rel ppr ON ppr.prpubid = p.oid;
 
@@ -48,7 +48,7 @@ ELSE
         FROM pglogical.replication_set_relation r
         JOIN pglogical.replication_set rs USING (set_id)
         UNION ALL
-        SELECT p.oid AS id, prrelid AS relid, pubname AS name, 'native'::pgl_ddl_deploy.driver AS driver
+        SELECT p.oid AS id, prrelid::REGCLASS AS relid, pubname AS name, 'native'::pgl_ddl_deploy.driver AS driver
         FROM pg_publication p
         JOIN pg_publication_rel ppr ON ppr.prpubid = p.oid;
     END IF;

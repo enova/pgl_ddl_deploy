@@ -219,6 +219,11 @@ WITH vars AS
             $INNER_BLOCK$||c_exec_prefix||v_ddl_sql_sent||c_exec_suffix||$INNER_BLOCK$
             ;
         $INNER_BLOCK$;
+        RAISE DEBUG 'v_full_ddl: %', v_full_ddl;
+        RAISE DEBUG 'c_set_config_id: %', c_set_config_id;
+        RAISE DEBUG 'c_set_name: %', c_set_name;
+        RAISE DEBUG 'c_driver: %', c_driver;
+        RAISE DEBUG 'v_ddl_sql_sent: %', v_ddl_sql_sent;
 
         v_sql:=$INNER_BLOCK$
         SELECT $BUILD$||CASE
@@ -229,7 +234,7 @@ WITH vars AS
             ELSE 'ERROR-EXCEPTION' END||$BUILD$.replicate_ddl_command($REPLICATE_DDL_COMMAND$
         SELECT pgl_ddl_deploy.subscriber_command
         (
-          p_provider_name := $INNER_BLOCK$||quote_literal(c_provider_name)||$INNER_BLOCK$,
+          p_provider_name := $INNER_BLOCK$||COALESCE(quote_literal(c_provider_name), 'NULL')||$INNER_BLOCK$,
           p_set_name := ARRAY[$INNER_BLOCK$||quote_literal(c_set_name)||$INNER_BLOCK$],
           p_nspname := $INNER_BLOCK$||COALESCE(quote_literal(v_nspname), 'NULL')::TEXT||$INNER_BLOCK$,
           p_relname := $INNER_BLOCK$||COALESCE(quote_literal(v_relname), 'NULL')::TEXT||$INNER_BLOCK$,
@@ -247,7 +252,7 @@ WITH vars AS
         ARRAY['$INNER_BLOCK$||c_set_name||$INNER_BLOCK$']);
         $INNER_BLOCK$;
         
-        RAISE DEBUG '%', v_sql;
+        RAISE DEBUG 'v_sql: %', v_sql;
         EXECUTE v_sql;
 
         INSERT INTO pgl_ddl_deploy.events

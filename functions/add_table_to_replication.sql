@@ -1,6 +1,7 @@
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.add_table_to_replication(p_driver pgl_ddl_deploy.driver, p_set_name name, p_relation regclass, p_synchronize_data boolean DEFAULT false)
  RETURNS BOOLEAN 
  LANGUAGE plpgsql
+ SECURITY DEFINER
 AS $function$
 DECLARE
     v_schema NAME;
@@ -22,12 +23,12 @@ ELSEIF p_driver = 'native' THEN
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE c.oid = p_relation::OID;
 
-    EXECUTE 'ALTER PUBLICATION '||quote_ident(p_set_name)||' ADD TABLE '||quote_ident(v_schema)||'.'||quote_ident(v_name)||';';
+    EXECUTE 'ALTER PUBLICATION '||quote_ident(p_set_name)||' ADD TABLE '||quote_ident(v_schema)||'.'||quote_ident(v_table)||';';
     
     -- We use true to synchronize data here, not taking the value from p_synchronize_data.  This is because of the different way
     -- that native logical works, and that changes are not queued from the time of the table being added to replication.  Thus, we
     -- by default WILL use COPY_DATA = true
-    PERFORM pgl_ddl_deploy.replicate_ddl_command($$SELECT pgl_ddl_deploy.notify_subscription_refresh('$$||p_set_name||$$', true);$$);
+    PERFORM pgl_ddl_deploy.replicate_ddl_command($$SELECT pgl_ddl_deploy.notify_subscription_refresh('$$||p_set_name||$$', true);$$, array[p_set_name]);
     v_result = true;
 
 ELSE

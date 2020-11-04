@@ -19,6 +19,7 @@ INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex, lock_saf
 SELECT 'my_special_tables_2', NULL, TRUE, TRUE, TRUE, '{"ALTER TABLE"}', NULL; 
 
 --One include_schema_regex one that should be unchanged
+CREATE TEMP TABLE repsets AS
 WITH new_sets (set_name) AS (
   VALUES ('testspecial'::TEXT)
 )
@@ -29,7 +30,6 @@ SELECT pglogical.create_replication_set
 ,replicate_update:=TRUE
 ,replicate_delete:=TRUE
 ,replicate_truncate:=TRUE) AS result
-INTO TEMP repsets
 FROM new_sets s
 WHERE NOT EXISTS (
 SELECT 1
@@ -48,13 +48,19 @@ CREATE SCHEMA special;
 CREATE TABLE special.foo (id serial primary key, foo text, bar text);
 CREATE TABLE special.bar (id serial primary key, super text, man text);
 
-SELECT pglogical.replication_set_add_table(
-  set_name:='my_special_tables_1'
-  ,relation:='special.foo'::REGCLASS);
+SELECT pgl_ddl_deploy.add_table_to_replication(
+  p_driver:=driver
+  ,p_set_name:=name
+  ,p_relation:='special.foo'::REGCLASS)
+FROM pgl_ddl_deploy.rep_set_wrapper()
+WHERE name = 'my_special_tables_1';
 
-SELECT pglogical.replication_set_add_table(
-  set_name:='my_special_tables_2'
-  ,relation:='special.bar'::REGCLASS);
+SELECT pgl_ddl_deploy.add_table_to_replication(
+  p_driver:=driver
+  ,p_set_name:=name
+  ,p_relation:='special.bar'::REGCLASS)
+FROM pgl_ddl_deploy.rep_set_wrapper()
+WHERE name = 'my_special_tables_2';
 
 --Deploy by set_name
 SELECT pgl_ddl_deploy.deploy('my_special_tables_1');

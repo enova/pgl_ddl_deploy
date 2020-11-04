@@ -56,7 +56,7 @@ IF v_count > 0 THEN
         FROM pgl_ddl_deploy.rep_set_table_wrapper() rsr
         WHERE rsr.name = '$SQL$||p_set_name||$SQL$'
           AND rsr.relid = c.oid
-          AND rsr.driver = '$SQL$||p_driver||$SQL$');
+          AND rsr.driver = (SELECT driver FROM pgl_ddl_deploy.set_configs WHERE set_name = '$SQL$||p_set_name||$SQL$'));
     $SQL$;
     RETURN FALSE;
 END IF;

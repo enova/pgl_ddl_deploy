@@ -8,6 +8,7 @@ CREATE SCHEMA bla;
 
 SELECT pgl_ddl_deploy.undeploy(id) FROM pgl_ddl_deploy.set_configs;
 
+CREATE TEMP TABLE repsets AS
 WITH new_sets (set_name) AS (
   VALUES ('test_ddl_only'::TEXT)
 )
@@ -18,7 +19,6 @@ SELECT pglogical.create_replication_set
 ,replicate_update:=TRUE
 ,replicate_delete:=TRUE
 ,replicate_truncate:=TRUE) AS result
-INTO TEMP repsets
 FROM new_sets s
 WHERE NOT EXISTS (
 SELECT 1

@@ -1,0 +1,4 @@
+CREATE ROLE unpriv;
+SET ROLE unpriv;
+CREATE TEMP TABLE foo();
+ALTER TABLE foo ADD COLUMN id INT;

@@ -1,8 +1,8 @@
 CREATE TYPE pgl_ddl_deploy.driver AS ENUM ('pglogical', 'native');
 -- Not possible that any existing config would be native, so:
 ALTER TABLE pgl_ddl_deploy.set_configs ADD COLUMN driver pgl_ddl_deploy.driver NOT NULL DEFAULT 'pglogical';
-DROP FUNCTION pgl_ddl_deploy.rep_set_table_wrapper();
-DROP FUNCTION pgl_ddl_deploy.deployment_check_count(integer, text, text);
+DROP FUNCTION IF EXISTS pgl_ddl_deploy.rep_set_table_wrapper();
+DROP FUNCTION IF EXISTS pgl_ddl_deploy.deployment_check_count(integer, text, text);
 DROP FUNCTION pgl_ddl_deploy.subscriber_command
 (
   p_provider_name NAME,
@@ -25,7 +25,7 @@ queued_at timestamp with time zone not null,
 role name not null,
 pubnames text[],
 message_type "char" not null,
-message json not null
+message jsonb not null
 );
 COMMENT ON TABLE pgl_ddl_deploy.queue IS 'Modeled on the pglogical.queue table for native logical replication ddl';
 

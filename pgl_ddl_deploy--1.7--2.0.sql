@@ -6,8 +6,8 @@
 CREATE TYPE pgl_ddl_deploy.driver AS ENUM ('pglogical', 'native');
 -- Not possible that any existing config would be native, so:
 ALTER TABLE pgl_ddl_deploy.set_configs ADD COLUMN driver pgl_ddl_deploy.driver NOT NULL DEFAULT 'pglogical';
-DROP FUNCTION pgl_ddl_deploy.rep_set_table_wrapper();
-DROP FUNCTION pgl_ddl_deploy.deployment_check_count(integer, text, text);
+DROP FUNCTION IF EXISTS pgl_ddl_deploy.rep_set_table_wrapper();
+DROP FUNCTION IF EXISTS pgl_ddl_deploy.deployment_check_count(integer, text, text);
 DROP FUNCTION pgl_ddl_deploy.subscriber_command
 (
   p_provider_name NAME,
@@ -30,7 +30,7 @@ queued_at timestamp with time zone not null,
 role name not null,
 pubnames text[],
 message_type "char" not null,
-message json not null
+message jsonb not null
 );
 COMMENT ON TABLE pgl_ddl_deploy.queue IS 'Modeled on the pglogical.queue table for native logical replication ddl';
 
@@ -85,7 +85,7 @@ BEGIN
 
 -- NOTE: pglogical uses clock_timestamp() to log queued_at times and we do the same here
 INSERT INTO pgl_ddl_deploy.queue (queued_at, role, pubnames, message_type, message)
-VALUES (clock_timestamp(), current_role, pubnames, pgl_ddl_deploy.queue_ddl_message_type(), command);
+VALUES (clock_timestamp(), current_role, pubnames, pgl_ddl_deploy.queue_ddl_message_type(), to_jsonb(command::text));
 
 RETURN TRUE;
 
@@ -97,6 +97,7 @@ $function$
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.add_table_to_replication(p_driver pgl_ddl_deploy.driver, p_set_name name, p_relation regclass, p_synchronize_data boolean DEFAULT false)
  RETURNS BOOLEAN 
  LANGUAGE plpgsql
+ SECURITY DEFINER
 AS $function$
 DECLARE
     v_schema NAME;
@@ -118,12 +119,12 @@ ELSEIF p_driver = 'native' THEN
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE c.oid = p_relation::OID;
 
-    EXECUTE 'ALTER PUBLICATION '||quote_ident(p_set_name)||' ADD TABLE '||quote_ident(v_schema)||'.'||quote_ident(v_name)||';';
+    EXECUTE 'ALTER PUBLICATION '||quote_ident(p_set_name)||' ADD TABLE '||quote_ident(v_schema)||'.'||quote_ident(v_table)||';';
     
     -- We use true to synchronize data here, not taking the value from p_synchronize_data.  This is because of the different way
     -- that native logical works, and that changes are not queued from the time of the table being added to replication.  Thus, we
     -- by default WILL use COPY_DATA = true
-    PERFORM pgl_ddl_deploy.replicate_ddl_command($$SELECT pgl_ddl_deploy.notify_subscription_refresh('$$||p_set_name||$$', true);$$);
+    PERFORM pgl_ddl_deploy.replicate_ddl_command($$SELECT pgl_ddl_deploy.notify_subscription_refresh('$$||p_set_name||$$', true);$$, array[p_set_name]);
     v_result = true;
 
 ELSE
@@ -197,7 +198,7 @@ IF current_setting('server_version_num')::INT < 100000 THEN
 ELSE
     IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pglogical') THEN
         RETURN QUERY
-        SELECT p.oid AS id, prrelid AS relid, pubname AS name, 'native'::pgl_ddl_deploy.driver AS driver
+        SELECT p.oid AS id, prrelid::REGCLASS AS relid, pubname AS name, 'native'::pgl_ddl_deploy.driver AS driver
         FROM pg_publication p
         JOIN pg_publication_rel ppr ON ppr.prpubid = p.oid;
 
@@ -207,7 +208,7 @@ ELSE
         FROM pglogical.replication_set_table r
         JOIN pglogical.replication_set rs USING (set_id)
         UNION ALL
-        SELECT p.oid AS id, prrelid AS relid, pubname AS name, 'native'::pgl_ddl_deploy.driver AS driver
+        SELECT p.oid AS id, prrelid::REGCLASS AS relid, pubname AS name, 'native'::pgl_ddl_deploy.driver AS driver
         FROM pg_publication p
         JOIN pg_publication_rel ppr ON ppr.prpubid = p.oid;
 
@@ -217,7 +218,7 @@ ELSE
         FROM pglogical.replication_set_relation r
         JOIN pglogical.replication_set rs USING (set_id)
         UNION ALL
-        SELECT p.oid AS id, prrelid AS relid, pubname AS name, 'native'::pgl_ddl_deploy.driver AS driver
+        SELECT p.oid AS id, prrelid::REGCLASS AS relid, pubname AS name, 'native'::pgl_ddl_deploy.driver AS driver
         FROM pg_publication p
         JOIN pg_publication_rel ppr ON ppr.prpubid = p.oid;
     END IF;
@@ -331,7 +332,7 @@ IF v_count > 0 THEN
         FROM pgl_ddl_deploy.rep_set_table_wrapper() rsr
         WHERE rsr.name = '$SQL$||p_set_name||$SQL$'
           AND rsr.relid = c.oid
-          AND rsr.driver = '$SQL$||p_driver||$SQL$');
+          AND rsr.driver = (SELECT driver FROM pgl_ddl_deploy.set_configs WHERE set_name = '$SQL$||p_set_name||$SQL$'));
     $SQL$;
     RETURN FALSE;
 END IF;
@@ -586,7 +587,7 @@ $pgl_ddl_deploy_sql$
 LANGUAGE plpgsql VOLATILE;
 
 
-CREATE OR REPLACE FUNCTION pgl_ddl_deploy.queue_message_type()
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.queue_ddl_message_type()
  RETURNS "char" 
  LANGUAGE sql
  IMMUTABLE
@@ -847,6 +848,11 @@ WITH vars AS
             $INNER_BLOCK$||c_exec_prefix||v_ddl_sql_sent||c_exec_suffix||$INNER_BLOCK$
             ;
         $INNER_BLOCK$;
+        RAISE DEBUG 'v_full_ddl: %', v_full_ddl;
+        RAISE DEBUG 'c_set_config_id: %', c_set_config_id;
+        RAISE DEBUG 'c_set_name: %', c_set_name;
+        RAISE DEBUG 'c_driver: %', c_driver;
+        RAISE DEBUG 'v_ddl_sql_sent: %', v_ddl_sql_sent;
 
         v_sql:=$INNER_BLOCK$
         SELECT $BUILD$||CASE
@@ -857,7 +863,7 @@ WITH vars AS
             ELSE 'ERROR-EXCEPTION' END||$BUILD$.replicate_ddl_command($REPLICATE_DDL_COMMAND$
         SELECT pgl_ddl_deploy.subscriber_command
         (
-          p_provider_name := $INNER_BLOCK$||quote_literal(c_provider_name)||$INNER_BLOCK$,
+          p_provider_name := $INNER_BLOCK$||COALESCE(quote_literal(c_provider_name), 'NULL')||$INNER_BLOCK$,
           p_set_name := ARRAY[$INNER_BLOCK$||quote_literal(c_set_name)||$INNER_BLOCK$],
           p_nspname := $INNER_BLOCK$||COALESCE(quote_literal(v_nspname), 'NULL')::TEXT||$INNER_BLOCK$,
           p_relname := $INNER_BLOCK$||COALESCE(quote_literal(v_relname), 'NULL')::TEXT||$INNER_BLOCK$,
@@ -875,7 +881,7 @@ WITH vars AS
         ARRAY['$INNER_BLOCK$||c_set_name||$INNER_BLOCK$']);
         $INNER_BLOCK$;
         
-        RAISE DEBUG '%', v_sql;
+        RAISE DEBUG 'v_sql: %', v_sql;
         EXECUTE v_sql;
 
         INSERT INTO pgl_ddl_deploy.events
@@ -1320,5 +1326,54 @@ SELECT
         AND evtenabled IN('O','R','A')
     ) AS is_deployed
 FROM build b;
+
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.add_role(p_roleoid oid)
+ RETURNS boolean
+ LANGUAGE plpgsql
+AS $function$
+/******
+Assuming roles doing DDL are not superusers, this function grants needed privileges
+to run through the pgl_ddl_deploy DDL deployment.
+This needs to be run on BOTH provider and subscriber.
+******/
+DECLARE
+    v_rec RECORD;
+    v_sql TEXT;
+    v_rsat_args TEXT;
+BEGIN
+
+    FOR v_rec IN
+        SELECT quote_ident(rolname) AS rolname FROM pg_roles WHERE oid = p_roleoid
+    LOOP
+
+    v_sql:='
+        GRANT USAGE ON SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
+        GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.replicate_ddl_command(text, text[]) TO '||v_rec.rolname||';
+        GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.add_table_to_replication(pgl_ddl_deploy.driver, name, regclass, boolean) TO '||v_rec.rolname||';
+        GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.sql_command_tags(text) TO '||v_rec.rolname||';
+        GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.kill_blockers(pgl_ddl_deploy.signals, name, name) TO '||v_rec.rolname||';
+        GRANT INSERT, UPDATE, SELECT ON ALL TABLES IN SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
+        GRANT USAGE ON ALL SEQUENCES IN SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';';
+    EXECUTE v_sql;
+
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pglogical') THEN
+        v_rsat_args:=pg_get_function_identity_arguments('pglogical.replication_set_add_table'::REGPROC);
+
+
+        v_sql:='
+        GRANT USAGE ON SCHEMA pglogical TO '||v_rec.rolname||';
+        GRANT EXECUTE ON FUNCTION pglogical.replicate_ddl_command(text, text[]) TO '||v_rec.rolname||';
+        GRANT EXECUTE ON FUNCTION pglogical.replication_set_add_table(' || v_rsat_args || ') TO '||v_rec.rolname||';
+        GRANT SELECT ON ALL TABLES IN SCHEMA pglogical TO '||v_rec.rolname||';';
+        EXECUTE v_sql;
+    END IF; 
+
+    RETURN true;
+    END LOOP;
+RETURN false;
+END;
+$function$
+;
 
 

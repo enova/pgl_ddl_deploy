@@ -2,7 +2,20 @@
 --If adding new tests, it is best to keep this file as the last test before cleanup.
 SET client_min_messages = warning;
 
-SELECT replication_sets, message_type, regexp_replace(message::text, 'p_pid := (\d+)', 'p_pid := ?') as message FROM pglogical.queue ORDER BY queued_at;
+SELECT pubnames, message_type, regexp_replace(regexp_replace(regexp_replace(message::text, 'p_pid := (\d+)', 'p_pid := ?'), 'p_provider_name := (NULL|''\w+'')', 'p_provider_name := ?'), 'p_driver := (''\w+'')', 'p_driver := ?') as message FROM all_queues() WHERE NOT message::text LIKE '%notify_subscription_refresh%' ORDER BY queued_at;
+
+DO $$
+DECLARE v_ct INT;
+BEGIN
+
+IF current_setting('server_version_num')::INT >= 100000 AND NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pglogical') THEN
+    SELECT COUNT(1) INTO v_ct FROM all_queues() WHERE message::text LIKE '%notify_subscription_refresh%';
+    IF v_ct != 79 THEN
+        RAISE EXCEPTION '%', v_ct;
+    END IF;
+END IF; 
+
+END$$;
 
 --Some day, we should regress with multiple databases.  There are examples of this in pglogical code base
 --For now, we will mock the subscriber behavior, which is less than ideal, because it misses testing execution
