@@ -24,3 +24,8 @@ END;
 $BODY$
 LANGUAGE plpgsql;
 SELECT set_driver();
+ set_driver 
+------------
+ 
+(1 row)
+

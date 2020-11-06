@@ -40,7 +40,7 @@ make_and_test "9.6" $from_version
 make_and_test "10" $from_version
 make_and_test "11" $from_version
 make_and_test "12" $from_version
-#make_and_test "13" $from_version
+make_and_test "13" $from_version
 }
 test_all_versions "2.0"
 #test_all_versions "1.7"

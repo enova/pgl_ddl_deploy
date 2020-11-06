@@ -70,7 +70,11 @@ get_command_tag(PG_FUNCTION_ARGS)
 	if (!cmd->parsetree)
 		PG_RETURN_NULL();
 
+#if PG_VERSION_NUM >= 130000
+	PG_RETURN_TEXT_P(cstring_to_text(CreateCommandName(cmd->parsetree)));
+#else
 	PG_RETURN_TEXT_P(cstring_to_text(CreateCommandTag(cmd->parsetree)));
+#endif
 }
 
 /*
@@ -166,9 +170,6 @@ get_altertable_subcmdtypes(PG_FUNCTION_ARGS)
 				break;
 			case AT_ValidateConstraintRecurse:
 				strtype = "VALIDATE CONSTRAINT (and recurse)";
-				break;
-			case AT_ProcessedConstraint:
-				strtype = "ADD (processed) CONSTRAINT";
 				break;
 			case AT_AddIndexConstraint:
 				strtype = "ADD CONSTRAINT (using index)";
