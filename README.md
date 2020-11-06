@@ -1,6 +1,6 @@
-# Pglogical DDL Deployment (pgl_ddl_deploy)
+# Transparent Logical DDL Replication (pgl_ddl_deploy)
 
-Transparent DDL replication for Postgres 9.5+
+Transparent DDL replication for Postgres 9.5+ for both pglogical and native logical replication.
 
 [Overview](#overview)
 - [Release Notes](#release_notes)
@@ -30,7 +30,9 @@ Transparent DDL replication for Postgres 9.5+
 
 # <a name="overview"></a>Overview
 
-Read the Release Summary:
+Since the original release of this extension, version 2.0 introduces the
+major change of support for native logical replication.  Read the
+Original Release Summary here:
 https://innovation.enova.com/pursuing-postgres-ddl-replication/
 
 # <a name="release_notes"></a>Release Notes
@@ -38,9 +40,7 @@ https://innovation.enova.com/pursuing-postgres-ddl-replication/
 ### Release 2.0
 Summary of changes:
 * Support for DDL replication using Native Logical Replication
-* Support for swapping existing pgl_ddl_deploy configs from pglogical to native
 * Support for Postgres 13
-* Support tests removed for any version prior to 1.4
 
 ### Release 1.7
 Summary of changes:
@@ -102,7 +102,7 @@ new tables, alter tables, and the like, we have to manage this separately in our
 application deployment process in order to make those same changes on logical
 replicas, and add such tables to replication.
 
-As of Postgres 11, there is no native way to do "transparent DDL replication"
+As of Postgres 13, there is no native way to do "transparent DDL replication"
 to other Postgres clusters alongside any logical replication technology, built
 on standard Postgres.
 
@@ -129,13 +129,6 @@ We also think it's possible to expand this concept by further leveraging the
 Postgres parser.  There is much detail below on what the Limitations and
 Restrictions are of this framework.
 
-**NOTE**: The concept implemented here could be extended with any replication
-framework that can propagate SQL to subscribers, i.e. skytools and Postgres'
-built-in logical replication starting at 10.0.  The reason this has not already
-been done is because of time constraints, and because there are a lot of
-specifics related to each replication technology. We would welcome a project to
-extend this to work with any replication technology.
-
 ## <a name="features"></a>Features
 
 - Any DDL SQL statement can be propagated directly to subscribers without your
@@ -145,7 +138,7 @@ of replication.
 - Tables can be automatically added to replication upon creation (`include_schema_regex` option).
 
 - Filtering by schema (regular expression) is supported.  This allows you to
-  selectively replicate only certain schemas within a replication set.
+  selectively replicate only certain schemas within a publication/replication set.
   
 - Filtering by a specific set of tables is supported, which is most useful to
   replicate a small set of tables and maintain things like columns added/dropped
@@ -171,7 +164,7 @@ terminated.
 ## <a name="full_example"></a>A Full Example
 
 Since we always look for documentation by example, we show this first.  Assuming
-pglogical is already setup with an active subscription, and given these replication sets:
+logical replication is already setup with an active subscription, and given these publications/replication sets:
 - `default` - replicate every event
 - `insert_update` - replicate only inserts and updates
 
@@ -215,8 +208,8 @@ ALTER TABLE foo OWNER TO app_owner; --...etc
 ```
 
 Here is a way to fix the subscriber table owner based on the tables already in
-replication on provider for the same replication set and ddl configuration you
-just setup on provider (shell command):
+replication on provider for the same publication/replication set and ddl configuration you
+just setup on provider (shell command - pglogical example):
 ```sh
 PGSERVICE=provider_cluster psql provider_db << EOM | PGSERVICE=subscriber_cluster psql subscriber_db
 COPY
@@ -329,11 +322,11 @@ ALTER EXTENSION pgl_ddl_deploy UPDATE;
 
 ## <a name="config"></a>Configuration
 
-DDL replication is configured on a per-replication set basis, in terms of
-`pglogical.replication_set`.
+For native logical replication, DDL replication is configured on a per-publication basis.
+For pglogical, DDL replication is configured on a per-replication set basis.
 
 There are three basic types of configuration:
-  - `include_only_repset_tables` - Only tables already in a replication set
+  - `include_only_repset_tables` - Only tables already in a publication/replication set
   are maintained.  This means only `ALTER TABLE` or `COMMENT` statements are replicated.
   - `include_schema_regex` - Provide a regular expression to match both current
   and future schemas to be automatically added to replication.  This supports all event
@@ -348,23 +341,25 @@ only means tables are not automatically added to replication.  Its use is if you
 schema of two systems in sync, but not necessarily replicate data for all tables.
 
 Add rows to `pgl_ddl_deploy.set_configs` in order to configure (but not yet
-deploy) DDL replication for a particular replication set.  For example:
+deploy) DDL replication for a particular publication/replication set.  Note especially that
+`driver` controls which replication technology this is for, `native` or `pglogical`. For example:
 ```sql
 --Only some options are shown.  See below for all options
 
 --This type of configuration will DDL replicate all user schemas, and auto-add
 --new matching schemas/tables to replication:
-INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex)
-VALUES ('default', '.*');
+INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex, driver)
+VALUES ('default', '.*', 'native'::pgl_ddl_deploy.driver);
 
 --This type of configuration will maintain only the specific set of tables
 --in the given replication set for any `ALTER TABLE` statements:
-INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_only_repset_tables)
-VALUES ('my_special_tables', TRUE);
+INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_only_repset_tables, driver)
+VALUES ('my_special_tables', TRUE, 'native'::pgl_ddl_deploy.driver);
 ```
 
 The relevant settings:
-- `set_name`: pglogical replication_set name
+- `driver`: `native` or `pglogical` (type `pgl_ddl_deploy.driver`) - DEFAULT pglogical
+- `set_name`: publication name OR pglogical replication_set name
 - `include_schema_regex`: a regular expression for which schemas to include in
   DDL replication.  This can be used to auto-add new tables to replication.  This
   option is incompatible with `include_only_repset_tables`.
@@ -637,7 +632,7 @@ The above is completely supported by this framework, bearing in mind
 some of the edge cases with [multi-statements](#multi_statement).  The
 `CREATE TABLE` will automatically be replicated by this framework, and
 the table will be added to replication since it has a primary key.  Then
-the `INSERT` will be replicated by normal pglogical replication.
+the `INSERT` will be replicated by normal logical replication.
 
 **NOTE** that temp tables are not affected by this limitation, since temp objects are
 always excluded from DDL replication anyway.
@@ -787,7 +782,8 @@ need to exclude the `INSERT` portion of the SQL and run:
 CREATE TABLE foo (id serial primary key, bla text);
 ```
 - If a new table is involved, in this case you also will need to manually add
-  the table to replication using `pglogical.replication_set_add_table`
+  the table to replication using `ALTER PUBLICATION ADD TABLE`
+  or `pglogical.replication_set_add_table` depending on driver.
 - If a new table is involved, you may need to resynchronize the table if data
   has been replicating for it
 - If a new table is NOT involved (for example `ALTER TABLE ADD COLUMN`), then
