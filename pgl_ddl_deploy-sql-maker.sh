@@ -50,6 +50,7 @@ add_file functions/queue_ddl_message_type.sql $update_file
 add_file functions/provider_node_name.sql $update_file
 add_file views/event_trigger_schema.sql $update_file
 add_file functions/add_role.sql $update_file
+add_file functions/override.sql $update_file
 
 # Only copy diff and new files after last version, and add the update script
 cp $last_version_file $new_version_file

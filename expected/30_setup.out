@@ -71,7 +71,7 @@ CREATE FUNCTION all_queues() RETURNS TABLE (queued_at timestamp with time zone,
 role name,
 pubnames text[],
 message_type "char",
-message jsonb)
+message text)
 AS
 $BODY$
 BEGIN
@@ -81,7 +81,7 @@ IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pglogical') THEN
     role,
     replication_sets AS pubnames,
     message_type,
-    message::jsonb
+    message::text
     FROM pglogical.queue
     UNION ALL
     SELECT queued_at,

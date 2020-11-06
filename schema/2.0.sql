@@ -25,15 +25,23 @@ queued_at timestamp with time zone not null,
 role name not null,
 pubnames text[],
 message_type "char" not null,
-message jsonb not null
+message text not null
 );
 COMMENT ON TABLE pgl_ddl_deploy.queue IS 'Modeled on the pglogical.queue table for native logical replication ddl';
+
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.override() RETURNS BOOLEAN AS $BODY$
+BEGIN
+RETURN FALSE;
+END;
+$BODY$
+LANGUAGE plpgsql IMMUTABLE;
 
 -- NOTE - this duplicates execute_queued_ddl.sql function file but is executed here for the upgrade/build path
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.execute_queued_ddl()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+DECLARE v_sql TEXT;
 BEGIN
 
 /***
@@ -48,8 +56,8 @@ If a row arrives here (the subscriber), it must mean that it was propagated
 ***/
 
 IF NEW.message_type = pgl_ddl_deploy.queue_ddl_message_type() AND
-    (SELECT COUNT(1) FROM pg_subscription s
-    WHERE subpublications && NEW.pubnames) > 0 THEN
+    (pgl_ddl_deploy.override() OR ((SELECT COUNT(1) FROM pg_subscription s
+    WHERE subpublications && NEW.pubnames) > 0)) THEN
 
     EXECUTE 'SET ROLE '||quote_ident(NEW.role)||';';
     EXECUTE NEW.message::TEXT;

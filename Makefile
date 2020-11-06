@@ -48,7 +48,8 @@ REGRESS := 01_create_ext 02_setup 03_add_configs 04_deploy 04_deploy_update \
            53_1_5_features \
            54_new_setup \
            55_raise_message \
-           56_1_6_features
+           56_1_6_features \
+           57_native_features
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)

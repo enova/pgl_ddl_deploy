@@ -16,8 +16,8 @@ If a row arrives here (the subscriber), it must mean that it was propagated
 ***/
 
 IF NEW.message_type = pgl_ddl_deploy.queue_ddl_message_type() AND
-    (SELECT COUNT(1) FROM pg_subscription s
-    WHERE subpublications && NEW.pubnames) > 0 THEN
+    (pgl_ddl_deploy.override() OR ((SELECT COUNT(1) FROM pg_subscription s
+    WHERE subpublications && NEW.pubnames) > 0)) THEN
     
     EXECUTE 'SET ROLE '||quote_ident(NEW.role)||';';
     EXECUTE NEW.message::TEXT;

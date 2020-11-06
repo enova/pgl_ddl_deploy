@@ -10,11 +10,11 @@ BEGIN
     FOR v_rec IN
         SELECT unnest(subpublications) AS pubname, subname
         FROM pg_subscription
-        WHERE subpublications && p_set_name::text[] 
+        WHERE subpublications && array[p_set_name::text]
     LOOP
 
     v_sql = $$ALTER SUBSCRIPTION $$||quote_ident(subname)||$$ REFRESH PUBLICATION WITH ( COPY_DATA = '$$||p_copy_data||$$');$$;
-    RAISE LOG 'pgl_ddl_deploy executing: '||v_sql;
+    RAISE LOG 'pgl_ddl_deploy executing: %', v_sql;
     EXECUTE v_sql;
 
     END LOOP;
