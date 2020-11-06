@@ -2,6 +2,7 @@ DO $$
 BEGIN
 
 IF current_setting('server_version_num')::INT >= 100000 THEN
+EXECUTE $sql$
 CREATE PUBLICATION test1;
 CREATE PUBLICATION test2;
 CREATE PUBLICATION test3;
@@ -9,7 +10,7 @@ CREATE PUBLICATION test4;
 CREATE PUBLICATION test5;
 CREATE PUBLICATION test6;
 CREATE PUBLICATION test7;
-CREATE PUBLICATION test8;
+CREATE PUBLICATION test8;$sql$;
 ELSE
 CREATE TEMP TABLE foonode AS SELECT pglogical.create_node('test','host=localhost');
 DROP TABLE foonode;

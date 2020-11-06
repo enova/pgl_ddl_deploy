@@ -4,6 +4,7 @@ DO $$
 BEGIN
 
 IF current_setting('server_version_num')::INT >= 100000 THEN
+SET session_replication_role TO replica;
 ELSE
 CREATE EXTENSION pglogical;
 END IF;
@@ -17,8 +18,6 @@ RETURN TRUE;
 END;
 $BODY$
 LANGUAGE plpgsql IMMUTABLE;
-
-SET session_replication_role TO replica;
 
 INSERT INTO pgl_ddl_deploy.queue (queued_at,role,pubnames,message_type,message)
 VALUES (now(),current_role,'{mock}'::TEXT[],pgl_ddl_deploy.queue_ddl_message_type(),'CREATE TABLE nativerox(id int)');

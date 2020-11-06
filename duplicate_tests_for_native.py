@@ -11,6 +11,7 @@ IF_NATIVE_START = """DO $$
 BEGIN
 
 IF current_setting('server_version_num')::INT >= 100000 THEN
+EXECUTE $sql$
 """
 IF_NATIVE_END = """END IF;
 
@@ -52,7 +53,7 @@ def handle_rep_config(old, new, line_start, line_end, native_statements_to_add, 
             if n == line_start:
                 newfile.write(IF_NATIVE_START)
                 newfile.write("\n".join(native_statements_to_add))
-                newfile.write('\nELSE\n')
+                newfile.write('$sql$;\nELSE\n')
                 newfile.write(line)
             elif n == line_end:
                 newfile.write(IF_NATIVE_END)
@@ -75,9 +76,12 @@ def make_native_file(old, new):
                 if not any(remove in line for remove in removes):
                     newfile.write(line)
                 else:
-                    newfile.write(IF_NATIVE_START)
+                    newfile.write("""DO $$
+BEGIN
+
+IF current_setting('server_version_num')::INT >= 100000 THEN\n""")
                     newfile.write("RAISE LOG '%', 'USING NATIVE';\n")
-                    newfile.write('ELSE\n')
+                    newfile.write('\nELSE\n')
                     newfile.write(line)
                     newfile.write(IF_NATIVE_END)
         with open(new, 'a') as newfile:
@@ -128,7 +132,7 @@ def make_native_file(old, new):
                 elif n == line_start:
                     newfile.write(IF_NATIVE_START)
                     newfile.write(f"CREATE PUBLICATION testspecial;\n")
-                    newfile.write('\nELSE\n')
+                    newfile.write('$sql$;\nELSE\n')
                     newfile.write(line)
                 elif n == line_end: 
                     newfile.write(IF_NATIVE_END)

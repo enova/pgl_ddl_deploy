@@ -23,7 +23,8 @@ DO $$
 BEGIN
 
 IF current_setting('server_version_num')::INT >= 100000 THEN
-CREATE PUBLICATION test_ddl_only;
+EXECUTE $sql$
+CREATE PUBLICATION test_ddl_only;$sql$;
 ELSE
 CREATE TEMP TABLE repsets AS
 WITH new_sets (set_name) AS (

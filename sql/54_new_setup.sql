@@ -24,8 +24,9 @@ DO $$
 BEGIN
 
 IF current_setting('server_version_num')::INT >= 100000 THEN
+EXECUTE $sql$
 CREATE PUBLICATION testspecial;
-
+$sql$;
 ELSE
 CREATE TEMP TABLE repsets AS
 WITH new_sets (set_name) AS (

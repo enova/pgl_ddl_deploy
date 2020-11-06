@@ -6,6 +6,7 @@ BEGIN
 
 IF current_setting('server_version_num')::INT >= 100000 THEN
 RAISE LOG '%', 'USING NATIVE';
+
 ELSE
 CREATE EXTENSION pglogical;
 END IF;

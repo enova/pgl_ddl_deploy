@@ -25,7 +25,8 @@ DO $$
 BEGIN
 
 IF current_setting('server_version_num')::INT >= 100000 THEN
-CREATE PUBLICATION testtemp;
+EXECUTE $sql$
+CREATE PUBLICATION testtemp;$sql$;
 ELSE
 CREATE TEMP TABLE repset AS
 SELECT pglogical.create_replication_set
