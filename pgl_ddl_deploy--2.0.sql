@@ -2860,6 +2860,24 @@ SELECT
   auto_replication_drop_trigger_name,
   auto_replication_unsupported_trigger_name,
 
+CASE WHEN driver = 'pglogical' THEN '--no-op pglogical diver'::TEXT
+WHEN driver = 'native' THEN $BUILD$
+DO $$
+BEGIN
+
+IF NOT EXISTS (SELECT 1
+FROM pg_publication_tables
+WHERE pubname = '$BUILD$||set_name||$BUILD$'
+AND schemaname = 'pgl_ddl_deploy'
+AND tablename = 'queue') THEN
+    ALTER PUBLICATION $BUILD$||quote_ident(set_name)||$BUILD$
+    ADD TABLE pgl_ddl_deploy.queue;
+END IF;
+
+END$$;
+$BUILD$
+END AS add_queue_table_to_replication,
+
 CASE WHEN create_tags IS NULL THEN '--no-op-null-create-tags'::TEXT ELSE
 $BUILD$
 CREATE OR REPLACE FUNCTION $BUILD$ || auto_replication_create_function_name || $BUILD$() RETURNS EVENT_TRIGGER
@@ -3139,7 +3157,8 @@ SELECT
   b.auto_replication_unsupported_trigger,
   b.undeploy_sql,
   b.undeploy_sql||
-  auto_replication_function||$BUILD$
+  b.add_queue_table_to_replication||$BUILD$
+  $BUILD$||auto_replication_function||$BUILD$
   $BUILD$||auto_replication_drop_function||$BUILD$
   $BUILD$||auto_replication_unsupported_function||$BUILD$
   $BUILD$||auto_replication_trigger||$BUILD$

@@ -43,6 +43,7 @@ ELSE
     RETURN QUERY EXECUTE $$
     SELECT name::TEXT AS set_name, relid::regclass::TEXT AS table_name
     FROM pgl_ddl_deploy.rep_set_table_wrapper() rsr
+    WHERE relid::regclass::TEXT <> 'pgl_ddl_deploy.queue'
     ORDER BY name::TEXT, relid::TEXT;$$;
 END IF;
 

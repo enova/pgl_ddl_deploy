@@ -6,7 +6,7 @@ import os
 last_original_test = 28
 sql = './sql'
 expected = './expected'
-TO_MODIFY = ['create_ext', 'setup', 'deploy_update', 'new_set_behavior', '1_4_features', 'sub_retries', 'new_setup']
+TO_MODIFY = ['create_ext', 'setup', 'deploy_update', 'new_set_behavior', '1_4_features', 'sub_retries', 'new_setup', 'multi_set_tags']
 IF_NATIVE_START = """DO $$
 BEGIN
 
@@ -139,6 +139,24 @@ IF current_setting('server_version_num')::INT >= 100000 THEN\n""")
                     newfile.write(line)
                 else:
                     newfile.write(line)
+    elif name == 'multi_set_tags':
+        validate(name)
+        copyfile(old, new)
+        with open(new, 'a') as newfile:
+            newfile.write("""
+DO $$
+DECLARE v_ct INT;
+BEGIN
+
+IF current_setting('server_version_num')::INT >= 100000 THEN
+    SELECT COUNT(1) INTO v_ct FROM pg_publication_tables WHERE schemaname = 'pgl_ddl_deploy' AND tablename = 'queue';
+    RAISE LOG 'v_ct: %', v_ct;
+    IF v_ct != 8 THEN
+        RAISE EXCEPTION 'Count does not match expected: v_ct: %', v_ct;
+    END IF;
+END IF;
+
+END$$;""")
     else:
         copyfile(old, new)
 

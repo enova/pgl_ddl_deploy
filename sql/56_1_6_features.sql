@@ -10,7 +10,7 @@ SELECT pgl_ddl_deploy.deploy('testspecial');
 CREATE TEMP VIEW tables_in_replication AS 
 SELECT COUNT(1)
 FROM pgl_ddl_deploy.rep_set_table_wrapper() t
-WHERE t.name = 'testspecial';
+WHERE t.name = 'testspecial' AND NOT relid::REGCLASS::TEXT = 'pgl_ddl_deploy.queue';
 
 TABLE tables_in_replication;
 
