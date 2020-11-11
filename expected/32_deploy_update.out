@@ -1,6 +1,12 @@
 --This will show different warnings depending on if we are actually updating to new version or not
 SET client_min_messages = error;
 ALTER EXTENSION pgl_ddl_deploy UPDATE;
+SELECT set_driver();
+ set_driver 
+------------
+ 
+(1 row)
+
 SELECT pgl_ddl_deploy.deploy('test1');
  deploy 
 --------

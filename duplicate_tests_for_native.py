@@ -20,8 +20,9 @@ END$$;
 MAKE_SET_DRIVER_FUNC = f"""CREATE FUNCTION set_driver() RETURNS VOID AS $BODY$
 BEGIN
 
-IF current_setting('server_version_num')::INT >= 100000 THEN
+IF current_setting('server_version_num')::INT >= 100000 AND (SELECT extversion::numeric FROM pg_extension WHERE extname = 'pgl_ddl_deploy') >= 2.0 THEN
     ALTER TABLE pgl_ddl_deploy.set_configs ALTER COLUMN driver SET DEFAULT 'native'::pgl_ddl_deploy.driver;
+    UPDATE pgl_ddl_deploy.set_configs SET driver = 'native'::pgl_ddl_deploy.driver;
 END IF;
 
 END;
@@ -76,14 +77,18 @@ def make_native_file(old, new):
                 if not any(remove in line for remove in removes):
                     newfile.write(line)
                 else:
-                    newfile.write("""DO $$
+                    newfile.write("""CREATE TEMP TABLE v AS
+SELECT :'v'::TEXT AS num;
+DO $$
 BEGIN
 
-IF current_setting('server_version_num')::INT >= 100000 THEN\n""")
+IF current_setting('server_version_num')::INT >= 100000
+AND (SELECT num FROM v) != ALL('{1.0,1.1,1.2,1.3,1.4,1.5,1.6,1.7}'::text[]) THEN\n""")
                     newfile.write("RAISE LOG '%', 'USING NATIVE';\n")
                     newfile.write('\nELSE\n')
                     newfile.write(line)
                     newfile.write(IF_NATIVE_END)
+                    newfile.write("DROP TABLE v;\n")
         with open(new, 'a') as newfile:
             newfile.write(MAKE_SET_DRIVER_FUNC)
             newfile.write(SET_DRIVER)
@@ -93,11 +98,19 @@ IF current_setting('server_version_num')::INT >= 100000 THEN\n""")
         statements = []
         for i in range(1, 9):
             statements.append(f"CREATE PUBLICATION {pubname_prefix}{i};")
-        handle_rep_config(old, new, 1, 23, statements, 0, -3) 
+        handle_rep_config(old, new, 1, 19, statements, 0, -3) 
     elif name == 'deploy_update':
-        validate(name) 
+        validate(name)
+        newtmp = f"{new}.tmp" 
+        with open(old) as oldfile, open(newtmp, 'w') as newfile:
+            for line in oldfile:
+                if "ALTER EXTENSION" in line:
+                    newfile.write(line)
+                    newfile.write(SET_DRIVER)
+                else:
+                    newfile.write(line)
         pubname = 'testtemp'
-        handle_rep_config(old, new, 24, 33, [f"CREATE PUBLICATION {pubname};"], 3, 2)
+        handle_rep_config(newtmp, new, 25, 34, [f"CREATE PUBLICATION {pubname};"], 3, 2)
     elif name == 'new_set_behavior':
         validate(name) 
         handle_rep_config(old, new, 18, 37, ["CREATE PUBLICATION my_special_tables_1;", "CREATE PUBLICATION my_special_tables_2;"], -2, -4) 

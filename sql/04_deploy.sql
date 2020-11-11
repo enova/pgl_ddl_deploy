@@ -35,13 +35,13 @@ DECLARE v_rec RECORD;
 BEGIN
 
 FOR v_rec IN
-    SELECT name
-    FROM pgl_ddl_deploy.rep_set_wrapper() 
-    WHERE name LIKE 'test%' AND name <> 'test1'
-    ORDER BY name
+    SELECT DISTINCT set_name
+    FROM pgl_ddl_deploy.set_configs
+    WHERE set_name LIKE 'test%' AND set_name <> 'test1'
+    ORDER BY set_name
 LOOP
 
-PERFORM pgl_ddl_deploy.deploy(v_rec.name);
+PERFORM pgl_ddl_deploy.deploy(v_rec.set_name);
 
 END LOOP;
 

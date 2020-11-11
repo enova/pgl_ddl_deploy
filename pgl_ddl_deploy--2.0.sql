@@ -1837,6 +1837,32 @@ $function$
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
 \echo Use "CREATE EXTENSION pgl_ddl_deploy" to load this file. \quit
 
+/*
+ * We need to re-deploy the trigger function definitions
+ * which will have changed with this extension update. So
+ * here we undeploy them, and save which ones we need to
+ * recreate later.
+*/
+DO $$
+BEGIN
+
+IF EXISTS (SELECT 1 FROM pg_views WHERE schemaname = 'pgl_ddl_deploy' AND viewname = 'event_trigger_schema') THEN 
+
+DROP TABLE IF EXISTS ddl_deploy_to_refresh;
+CREATE TEMP TABLE ddl_deploy_to_refresh AS
+SELECT id, pgl_ddl_deploy.undeploy(id) AS undeployed
+FROM pgl_ddl_deploy.event_trigger_schema
+WHERE is_deployed;
+
+ELSE
+
+DROP TABLE IF EXISTS ddl_deploy_to_refresh;
+CREATE TEMP TABLE ddl_deploy_to_refresh AS
+SELECT NULL::INT AS id;
+
+END IF;
+END$$;
+
 CREATE TYPE pgl_ddl_deploy.driver AS ENUM ('pglogical', 'native');
 -- Not possible that any existing config would be native, so:
 ALTER TABLE pgl_ddl_deploy.set_configs ADD COLUMN driver pgl_ddl_deploy.driver NOT NULL DEFAULT 'pglogical';
@@ -3244,5 +3270,26 @@ RETURN FALSE;
 END;
 $BODY$
 LANGUAGE plpgsql IMMUTABLE;
+
+
+-- Now re-deploy event triggers and functions
+SELECT id, pgl_ddl_deploy.deploy(id) AS deployed
+FROM ddl_deploy_to_refresh;
+
+DROP TABLE IF EXISTS ddl_deploy_to_refresh;
+DROP TABLE IF EXISTS tmp_objs;
+
+-- Ensure added roles have write permissions for new tables added
+-- Not so easy to pre-package this with default privileges because
+-- we can't assume everyone uses the same role to deploy this extension
+SELECT pgl_ddl_deploy.add_role(role_oid)
+FROM (
+SELECT DISTINCT r.oid AS role_oid
+FROM information_schema.table_privileges tp
+INNER JOIN pg_roles r ON r.rolname = tp.grantee AND NOT r.rolsuper
+WHERE table_schema = 'pgl_ddl_deploy'
+  AND privilege_type = 'INSERT'
+  AND table_name = 'subscriber_logs'
+) roles_with_existing_privileges;
 
 

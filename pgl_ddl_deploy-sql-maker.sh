@@ -51,6 +51,7 @@ add_file functions/provider_node_name.sql $update_file
 add_file views/event_trigger_schema.sql $update_file
 add_file functions/add_role.sql $update_file
 add_file functions/override.sql $update_file
+add_file schema/2.0_post.sql $update_file
 
 # Only copy diff and new files after last version, and add the update script
 cp $last_version_file $new_version_file

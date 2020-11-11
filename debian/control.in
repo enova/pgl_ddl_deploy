@@ -2,8 +2,8 @@ Source: pgl-ddl-deploy
 Section: database
 Priority: optional
 Maintainer: Jeremy Finzel <jfinzel@enova.com>
-Build-Depends: debhelper-compat (= 12), libpq-dev, postgresql-common, postgresql-server-dev-all
-Standards-Version: 4.2.1
+Build-Depends: debhelper (>= 9), libpq-dev, postgresql-common, postgresql-server-dev-all
+Standards-Version: 4.2.0
 Homepage: https://github.com/enova/pgl_ddl_deploy
 Vcs-Browser: https://github.com/enova/pgl_ddl_deploy
 Vcs-Git: https://github.com/enova/pgl_ddl_deploy.git

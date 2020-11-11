@@ -2,6 +2,7 @@
 SET client_min_messages = error;
 
 ALTER EXTENSION pgl_ddl_deploy UPDATE;
+SELECT set_driver();
 SELECT pgl_ddl_deploy.deploy('test1');
 DO $$
 DECLARE v_rec RECORD;

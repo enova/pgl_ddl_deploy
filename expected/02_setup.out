@@ -11,11 +11,7 @@ SELECT pglogical.create_replication_set
 ,replicate_update:=TRUE
 ,replicate_delete:=TRUE
 ,replicate_truncate:=TRUE) AS result
-FROM sets s
-WHERE NOT EXISTS (
-SELECT 1
-FROM pgl_ddl_deploy.rep_set_wrapper()
-WHERE name = s.set_name);
+FROM sets s;
 DROP TABLE repsets;
 CREATE ROLE test_pgl_ddl_deploy LOGIN;
 GRANT CREATE ON DATABASE contrib_regression TO test_pgl_ddl_deploy;
@@ -32,7 +28,7 @@ $BODY$
 BEGIN
 
 -- Handle change from view to function rep_set_table_wrapper
-IF (SELECT extversion FROM pg_extension WHERE extname = 'pgl_ddl_deploy') = ANY('{1.0,1.1,1.2,1.3}'::text[]) THEN
+IF (SELECT extversion FROM pg_extension WHERE extname = 'pgl_ddl_deploy') = ANY('{1.0,1.1,1.2,1.3,1.4,1.5,1.6,1.7}'::text[]) THEN
     RETURN QUERY EXECUTE $$
     SELECT set_name::TEXT, set_reloid::TEXT AS table_name
     FROM pgl_ddl_deploy.rep_set_table_wrapper rsr
