@@ -59,6 +59,7 @@ message_type "char" not null,
 message text not null
 );
 COMMENT ON TABLE pgl_ddl_deploy.queue IS 'Modeled on the pglogical.queue table for native logical replication ddl';
+ALTER TABLE pgl_ddl_deploy.queue REPLICA IDENTITY FULL;
 
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.override() RETURNS BOOLEAN AS $BODY$
 BEGIN
@@ -72,7 +73,6 @@ CREATE OR REPLACE FUNCTION pgl_ddl_deploy.execute_queued_ddl()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
-DECLARE v_sql TEXT;
 BEGIN
 
 /***
@@ -90,12 +90,40 @@ IF NEW.message_type = pgl_ddl_deploy.queue_ddl_message_type() AND
     (pgl_ddl_deploy.override() OR ((SELECT COUNT(1) FROM pg_subscription s
     WHERE subpublications && NEW.pubnames) > 0)) THEN
 
-    EXECUTE 'SET ROLE '||quote_ident(NEW.role)||';';
-    EXECUTE NEW.message::TEXT;
+    -- See https://www.postgresql.org/message-id/CAMa1XUh7ZVnBzORqjJKYOv4_pDSDUCvELRbkF0VtW7pvDW9rZw@mail.gmail.com
+    IF NEW.message ~* 'pgl_ddl_deploy.notify_subscription_refresh' THEN
+        INSERT INTO pgl_ddl_deploy.subscriber_logs
+        (set_name,
+         provider_pid,
+         provider_node_name,
+         provider_set_config_id,
+         executed_as_role,
+         subscriber_pid,
+         executed_at,
+         ddl_sql,
+         full_ddl_sql,
+         succeeded,
+         error_message)
+        VALUES
+        (NEW.pubnames[1],
+         NULL,
+         NULL,
+         NULL,
+         current_role,
+         pg_backend_pid(),
+         current_timestamp,
+         NEW.message,
+         NEW.message,
+         FALSE,
+         'Unsupported automated ALTER SUBSCRIPTION ... REFRESH PUBLICATION until bugfix');
+    ELSE
+        EXECUTE 'SET ROLE '||quote_ident(NEW.role)||';';
+        EXECUTE NEW.message::TEXT;
+    END IF;
 
     RETURN NEW;
 ELSE
-    RETURN NULL;
+    RETURN NULL; 
 END IF;
 
 END;
@@ -119,7 +147,7 @@ BEGIN
 
 -- NOTE: pglogical uses clock_timestamp() to log queued_at times and we do the same here
 INSERT INTO pgl_ddl_deploy.queue (queued_at, role, pubnames, message_type, message)
-VALUES (clock_timestamp(), current_role, pubnames, pgl_ddl_deploy.queue_ddl_message_type(), to_jsonb(command::text));
+VALUES (clock_timestamp(), current_role, pubnames, pgl_ddl_deploy.queue_ddl_message_type(), command);
 
 RETURN TRUE;
 
@@ -158,7 +186,12 @@ ELSEIF p_driver = 'native' THEN
     -- We use true to synchronize data here, not taking the value from p_synchronize_data.  This is because of the different way
     -- that native logical works, and that changes are not queued from the time of the table being added to replication.  Thus, we
     -- by default WILL use COPY_DATA = true
-    PERFORM pgl_ddl_deploy.replicate_ddl_command($$SELECT pgl_ddl_deploy.notify_subscription_refresh('$$||p_set_name||$$', true);$$, array[p_set_name]);
+
+    -- This needs to be in a DO block currently because of how the DDL is processed on the subscriber.
+    PERFORM pgl_ddl_deploy.replicate_ddl_command($$DO $AUTO_REPLICATE_BLOCK$
+    BEGIN
+    PERFORM pgl_ddl_deploy.notify_subscription_refresh('$$||p_set_name||$$', true);
+    END$AUTO_REPLICATE_BLOCK$;$$, array[p_set_name]);
     v_result = true;
 
 ELSE
@@ -177,11 +210,16 @@ $function$
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.notify_subscription_refresh(p_set_name name, p_copy_data boolean DEFAULT TRUE)
  RETURNS BOOLEAN 
  LANGUAGE plpgsql
+ SECURITY DEFINER
 AS $function$
 DECLARE
     v_rec RECORD;
     v_sql TEXT;
 BEGIN
+
+    IF NOT EXISTS (SELECT 1 FROM pg_subscription WHERE subpublications && array[p_set_name::text]) THEN
+        RAISE EXCEPTION 'No subscription to publication % exists', p_set_name;
+    END IF; 
 
     FOR v_rec IN
         SELECT unnest(subpublications) AS pubname, subname
@@ -189,7 +227,7 @@ BEGIN
         WHERE subpublications && array[p_set_name::text]
     LOOP
 
-    v_sql = $$ALTER SUBSCRIPTION $$||quote_ident(subname)||$$ REFRESH PUBLICATION WITH ( COPY_DATA = '$$||p_copy_data||$$');$$;
+    v_sql = $$ALTER SUBSCRIPTION $$||quote_ident(v_rec.subname)||$$ REFRESH PUBLICATION WITH ( COPY_DATA = '$$||p_copy_data||$$');$$;
     RAISE LOG 'pgl_ddl_deploy executing: %', v_sql;
     EXECUTE v_sql;
 
@@ -1404,6 +1442,7 @@ BEGIN
         GRANT USAGE ON SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
         GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.replicate_ddl_command(text, text[]) TO '||v_rec.rolname||';
         GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.add_table_to_replication(pgl_ddl_deploy.driver, name, regclass, boolean) TO '||v_rec.rolname||';
+        GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.notify_subscription_refresh(name, boolean) TO '||v_rec.rolname||';
         GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.sql_command_tags(text) TO '||v_rec.rolname||';
         GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.kill_blockers(pgl_ddl_deploy.signals, name, name) TO '||v_rec.rolname||';
         GRANT INSERT, UPDATE, SELECT ON ALL TABLES IN SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
@@ -1457,5 +1496,9 @@ WHERE table_schema = 'pgl_ddl_deploy'
   AND privilege_type = 'INSERT'
   AND table_name = 'subscriber_logs'
 ) roles_with_existing_privileges;
+
+REVOKE EXECUTE ON FUNCTION pgl_ddl_deploy.add_table_to_replication(pgl_ddl_deploy.driver, name, regclass, boolean) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION pgl_ddl_deploy.notify_subscription_refresh(name, boolean) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION pgl_ddl_deploy.kill_blockers(pgl_ddl_deploy.signals, name, name) FROM PUBLIC;
 
 

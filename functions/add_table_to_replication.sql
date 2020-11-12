@@ -28,7 +28,12 @@ ELSEIF p_driver = 'native' THEN
     -- We use true to synchronize data here, not taking the value from p_synchronize_data.  This is because of the different way
     -- that native logical works, and that changes are not queued from the time of the table being added to replication.  Thus, we
     -- by default WILL use COPY_DATA = true
-    PERFORM pgl_ddl_deploy.replicate_ddl_command($$SELECT pgl_ddl_deploy.notify_subscription_refresh('$$||p_set_name||$$', true);$$, array[p_set_name]);
+
+    -- This needs to be in a DO block currently because of how the DDL is processed on the subscriber.
+    PERFORM pgl_ddl_deploy.replicate_ddl_command($$DO $AUTO_REPLICATE_BLOCK$
+    BEGIN
+    PERFORM pgl_ddl_deploy.notify_subscription_refresh('$$||p_set_name||$$', true);
+    END$AUTO_REPLICATE_BLOCK$;$$, array[p_set_name]);
     v_result = true;
 
 ELSE

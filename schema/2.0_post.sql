@@ -17,3 +17,7 @@ WHERE table_schema = 'pgl_ddl_deploy'
   AND privilege_type = 'INSERT'
   AND table_name = 'subscriber_logs'
 ) roles_with_existing_privileges;
+
+REVOKE EXECUTE ON FUNCTION pgl_ddl_deploy.add_table_to_replication(pgl_ddl_deploy.driver, name, regclass, boolean) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION pgl_ddl_deploy.notify_subscription_refresh(name, boolean) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION pgl_ddl_deploy.kill_blockers(pgl_ddl_deploy.signals, name, name) FROM PUBLIC;

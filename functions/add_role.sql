@@ -21,6 +21,7 @@ BEGIN
         GRANT USAGE ON SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';
         GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.replicate_ddl_command(text, text[]) TO '||v_rec.rolname||';
         GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.add_table_to_replication(pgl_ddl_deploy.driver, name, regclass, boolean) TO '||v_rec.rolname||';
+        GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.notify_subscription_refresh(name, boolean) TO '||v_rec.rolname||';
         GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.sql_command_tags(text) TO '||v_rec.rolname||';
         GRANT EXECUTE ON FUNCTION pgl_ddl_deploy.kill_blockers(pgl_ddl_deploy.signals, name, name) TO '||v_rec.rolname||';
         GRANT INSERT, UPDATE, SELECT ON ALL TABLES IN SCHEMA pgl_ddl_deploy TO '||v_rec.rolname||';

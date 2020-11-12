@@ -32,6 +32,24 @@ IF current_setting('server_version_num')::INT >= 100000 THEN
     IF v_ct != 2 THEN
         RAISE EXCEPTION 'Count does not match expected: v_ct: %', v_ct;
     END IF;
+    SELECT COUNT(1) INTO v_ct FROM pgl_ddl_deploy.subscriber_logs;
+    RAISE LOG 'v_ct: %', v_ct;
+    IF v_ct != 1 THEN
+        RAISE EXCEPTION 'Count does not match expected: v_ct: %', v_ct;
+    END IF;
+    PERFORM pgl_ddl_deploy.retry_all_subscriber_logs(); 
+    SELECT (SELECT COUNT(1) FROM pgl_ddl_deploy.subscriber_logs WHERE NOT succeeded) +
+    (SELECT COUNT(1) FROM pgl_ddl_deploy.subscriber_logs WHERE error_message ~* 'No subscription to publication mock exists') INTO v_ct; 
+    RAISE LOG 'v_ct: %', v_ct;
+    IF v_ct != 3 THEN
+        RAISE EXCEPTION 'Count does not match expected: v_ct: %', v_ct;
+    END IF;
+ELSE
+    SELECT COUNT(1) INTO v_ct FROM pgl_ddl_deploy.subscriber_logs;
+    RAISE LOG 'v_ct: %', v_ct;
+    IF v_ct != 0 THEN
+        RAISE EXCEPTION 'Count does not match expected: v_ct: %', v_ct;
+    END IF;
 END IF;
 
 END$$;

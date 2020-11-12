@@ -68,7 +68,8 @@ CREATE FUNCTION all_queues() RETURNS TABLE (queued_at timestamp with time zone,
 role name,
 pubnames text[],
 message_type "char",
-message text)
+-- we use json here to provide test output consistency whether native or pglogical
+message json)
 AS
 $BODY$
 BEGIN
@@ -78,14 +79,14 @@ IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pglogical') THEN
     role,
     replication_sets AS pubnames,
     message_type,
-    message::text
+    message
     FROM pglogical.queue
     UNION ALL
     SELECT queued_at,
     role,
     pubnames,
     message_type,
-    message
+    to_json(message)
     FROM pgl_ddl_deploy.queue;$$;
 ELSE
     RETURN QUERY EXECUTE $$
@@ -93,7 +94,7 @@ ELSE
     role,
     pubnames,
     message_type,
-    message
+    to_json(message) AS message
     FROM pgl_ddl_deploy.queue;
     $$;
 END IF;

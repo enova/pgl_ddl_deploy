@@ -173,7 +173,7 @@ Provider:
 CREATE EXTENSION pgl_ddl_deploy;
 
 --Setup permissions
-SELECT pgl_ddl_deploy.add_role(oid) FROM pg_roles WHERE rolname = 'app_owner';
+SELECT pgl_ddl_deploy.add_role(oid) FROM pg_roles WHERE rolname in('app_owner', 'replication_role'); 
 
 --Setup configs
 INSERT INTO pgl_ddl_deploy.set_configs
@@ -197,7 +197,7 @@ CREATE EXTENSION pgl_ddl_deploy;
 
 --Setup permissions for the same role on subscriber to have DDL permissions 
 CREATE ROLE app_owner WITH NOLOGIN;
-SELECT pgl_ddl_deploy.add_role(oid) FROM pg_roles WHERE rolname = 'app_owner';
+SELECT pgl_ddl_deploy.add_role(oid) FROM pg_roles WHERE rolname in('app_owner', 'replication_role');
 
 --Be sure that on the subscriber, app_owner role has the following perms:
 GRANT CREATE ON DATABASE :DBNAME TO app_owner;
@@ -235,7 +235,16 @@ Provider:
 --Deploy DDL replication
 SELECT pgl_ddl_deploy.deploy(set_name)
 FROM pgl_ddl_deploy.set_configs;
+```
 
+Subscriber - only required if using native in order
+to add the `pgl_ddl_deploy.queue` table to replication.
+```sql
+ALTER SUBSCRIPTION default REFRESH PUBLICATION WITH (COPY_DATA = false);
+```
+
+Provider:
+```sql
 --App deployment role
 SET ROLE app_owner;
 
@@ -246,6 +255,16 @@ INSERT INTO foo (bla) VALUES (1),(2),(3);
 
 CREATE SCHEMA happy;
 CREATE TABLE happy.foo(id serial primary key);
+```
+
+NOTE - after creating a table using schema-regex-based DDL replication with
+native logical replication, it is necessary to manually execute on the subscriber
+the command `SELECT pgl_ddl_deploy.retry_all_subscriber_logs();` to complete the process
+of adding the new table to replication.  This is because
+of the bug https://www.postgresql.org/message-id/CAMa1XUh7ZVnBzORqjJKYOv4_pDSDUCvELRbkF0VtW7pvDW9rZw@mail.gmail.com
+preventing the safety of running ALTER SUBSCRIPTION ... REFRESH PUBLICATION in a replication
+process.  This will be updated as soon as a patch becomes available.
+```sql
 ALTER TABLE happy.foo ADD COLUMN bla INT;
 INSERT INTO happy.foo (bla) VALUES (1),(2),(3);
 DELETE FROM happy.foo WHERE bla = 3;
@@ -821,10 +840,29 @@ I think we do, but lots of work would be required, and we would welcome those
 with more comfort in the parser code to help if interested.
 
 ## <a name="sql files"></a>SQL files
-To build the higher version SQL files (i.e. 1.4) from the lower versions +
+To build the higher version SQL files (i.e. 2.0) from the lower versions +
 the upgrade patch SQL files, run `pgl_ddl_deploy-sql-maker.sh`.
 
+Note the script `correct_2.0_for_no_pglogical.py`.  This was used to edit the
+long `.sql` files to safely remove the hard dependency on pglogical. This should
+not be needed long-term (i.e. once moving to versions above 2.0).
+
 ## <a name="regression"></a>Regression testing
+The building of the regression suite has changed since adding native logical
+support.  There are several scripts involved to manage this.  Basically, I am
+duplicating the entire original test suite and making in-place changes in order
+to create a separate test flow for native logical replication, but also supporting
+the other pg versions prior to pg10.  Here is a brief explanation:
+    1. The script `duplicate_tests_for_native.py` copies all of the tests, adding
+        conditionals where needed.  It's not pretty but was the most efficient way
+        of managing the test suite with these 2 test flows.  It is not perfect, but
+        once it has been run, the test failures can be seen to be only white space
+        issues that then can be easily resolved by re-copying the `results` file to
+        `expected`.  It is desirable to have as few changes as possible between the
+        two test suites.
+    2. The script `generate_new_native_tests.py` is to generate numerically a brand
+        new test only applicable to native logical replication. 
+
 You can run the regression suite, which must be on a server that has pglogical
 packages available, and a cluster that is configured to allow creating the
 pglogical extension (i.e. adding it to `shared_preload_libraries`).  Note that
