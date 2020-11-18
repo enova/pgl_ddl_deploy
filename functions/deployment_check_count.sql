@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION pgl_ddl_deploy.deployment_check_count(p_set_config_id integer, p_set_name text, p_include_schema_regex text)
+CREATE OR REPLACE FUNCTION pgl_ddl_deploy.deployment_check_count(p_set_config_id integer, p_set_name text, p_include_schema_regex text, p_driver pgl_ddl_deploy.driver)
  RETURNS boolean
  LANGUAGE plpgsql
 AS $function$
@@ -26,10 +26,9 @@ FROM pg_namespace n
     AND NOT EXISTS
     (SELECT 1
     FROM pgl_ddl_deploy.rep_set_table_wrapper() rsr
-    INNER JOIN pglogical.replication_set r
-      ON r.set_id = rsr.set_id
-    WHERE r.set_name = p_set_name
-      AND rsr.set_reloid = c.oid);
+    WHERE rsr.name = p_set_name
+      AND rsr.relid = c.oid
+      AND rsr.driver = p_driver);
 
 IF v_count > 0 THEN
   RAISE WARNING $ERR$
@@ -55,10 +54,9 @@ IF v_count > 0 THEN
         AND NOT EXISTS
         (SELECT 1
         FROM pgl_ddl_deploy.rep_set_table_wrapper() rsr
-        INNER JOIN pglogical.replication_set r
-          ON r.set_id = rsr.set_id
-        WHERE r.set_name = '$SQL$||p_set_name||$SQL$'
-          AND rsr.set_reloid = c.oid);
+        WHERE rsr.name = '$SQL$||p_set_name||$SQL$'
+          AND rsr.relid = c.oid
+          AND rsr.driver = (SELECT driver FROM pgl_ddl_deploy.set_configs WHERE set_name = '$SQL$||p_set_name||$SQL$'));
     $SQL$;
     RETURN FALSE;
 END IF;

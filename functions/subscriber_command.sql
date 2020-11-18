@@ -11,6 +11,7 @@ CREATE OR REPLACE FUNCTION pgl_ddl_deploy.subscriber_command
   p_queue_subscriber_failures BOOLEAN,
   p_signal_blocking_subscriber_sessions pgl_ddl_deploy.signals,
   p_lock_timeout INT,
+  p_driver pgl_ddl_deploy.driver,
 -- This parameter currently only exists to make testing this function easier
   p_run_anywhere BOOLEAN = FALSE
 )
@@ -33,13 +34,7 @@ DECLARE
   v_signal pgl_ddl_deploy.signals; 
 BEGIN
 
---Only run on subscriber with this replication set, and matching provider node name
-IF EXISTS (SELECT 1
-              FROM pglogical.subscription s
-              INNER JOIN pglogical.node n
-                ON n.node_id = s.sub_origin
-                AND n.node_name = p_provider_name
-              WHERE sub_replication_sets && p_set_name) OR p_run_anywhere THEN
+IF pgl_ddl_deploy.is_subscriber(p_driver, p_set_name, p_provider_name) OR p_run_anywhere THEN
 
     v_error_message = NULL;
     /****

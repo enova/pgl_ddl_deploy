@@ -71,7 +71,11 @@ sql_command_tags(PG_FUNCTION_ARGS)
     foreach(parsetree_item, parsetree_list)
     {   
         Node    *parsetree = (Node *) lfirst(parsetree_item);
+#if PG_VERSION_NUM >= 130000
+        commandTag         = CreateCommandName(parsetree);
+#else
         commandTag         = CreateCommandTag(parsetree);
+#endif
         astate             = accumArrayResult(astate, CStringGetTextDatum(commandTag),
                              false, TEXTOID, CurrentMemoryContext);
     }

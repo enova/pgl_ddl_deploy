@@ -1,0 +1,18 @@
+SELECT pgl_ddl_deploy.sql_command_tags(NULL);
+ sql_command_tags 
+------------------
+ 
+(1 row)
+
+SELECT pgl_ddl_deploy.sql_command_tags('');
+ERROR:  Invalid sql command
+SELECT pgl_ddl_deploy.sql_command_tags('CREATE EXTENSON foo;');
+ERROR:  syntax error at or near "EXTENSON"
+LINE 1: SELECT pgl_ddl_deploy.sql_command_tags('CREATE EXTENSON foo;...
+               ^
+SELECT pgl_ddl_deploy.sql_command_tags('CREATE TABLE foo(); ALTER TABLE foo ADD COLUMN bar text; DROP TABLE foo;');
+              sql_command_tags               
+---------------------------------------------
+ {"CREATE TABLE","ALTER TABLE","DROP TABLE"}
+(1 row)
+

@@ -15,6 +15,7 @@ INSERT INTO pgl_ddl_deploy.set_configs (set_name, include_schema_regex, lock_saf
 SELECT 'test1', '.*', TRUE, TRUE, FALSE, '{"CREATE VIEW","ALTER VIEW","CREATE FUNCTION","ALTER FUNCTION"}', '{"DROP VIEW","DROP FUNCTION"}';
 
 --include_only_repset_tables
+CREATE TEMP TABLE repsets AS
 WITH new_sets (set_name) AS (
   VALUES ('my_special_tables_1'::TEXT),
     ('my_special_tables_2'::TEXT)
@@ -26,7 +27,6 @@ SELECT pglogical.create_replication_set
 ,replicate_update:=TRUE
 ,replicate_delete:=TRUE
 ,replicate_truncate:=TRUE) AS result
-INTO TEMP repsets
 FROM new_sets s
 WHERE NOT EXISTS (
 SELECT 1

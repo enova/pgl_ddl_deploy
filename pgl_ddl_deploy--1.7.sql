@@ -957,10 +957,10 @@ LANGUAGE plpgsql;
 
 
 GRANT USAGE ON SCHEMA pgl_ddl_deploy TO PUBLIC;
-GRANT USAGE ON SCHEMA pglogical TO PUBLIC;
-REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA pglogical FROM PUBLIC;
-DO $$
-BEGIN
+DO $$ BEGIN
+IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pglogical') THEN
+GRANT USAGE ON SCHEMA pglogical TO PUBLIC; REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA pglogical FROM PUBLIC;
+END IF;
 IF EXISTS (SELECT 1 FROM pg_proc p INNER JOIN pg_namespace n ON n.oid = p.pronamespace WHERE proname = 'dependency_check_trigger' AND nspname = 'pglogical') THEN
     GRANT EXECUTE ON FUNCTION pglogical.dependency_check_trigger() TO PUBLIC;
 END IF;

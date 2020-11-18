@@ -35,8 +35,8 @@ DECLARE v_rec RECORD;
 BEGIN
 
 FOR v_rec IN
-    SELECT set_name
-    FROM pglogical.replication_set
+    SELECT DISTINCT set_name
+    FROM pgl_ddl_deploy.set_configs
     WHERE set_name LIKE 'test%' AND set_name <> 'test1'
     ORDER BY set_name
 LOOP

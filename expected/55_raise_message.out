@@ -27,3 +27,8 @@ END$block$;
 "
 PL/pgSQL function pgl_ddl_deploy.raise_message(text,text) line 4 at EXECUTE
 ***/
+SELECT * FROM pgl_ddl_deploy.exceptions;
+ id | set_name | pid | executed_at | ddl_sql | err_msg | err_state | set_config_id | resolved | resolved_notes 
+----+----------+-----+-------------+---------+---------+-----------+---------------+----------+----------------
+(0 rows)
+

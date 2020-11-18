@@ -8,26 +8,26 @@ DECLARE v_rec RECORD;
 BEGIN
 
 FOR v_rec IN
-    SELECT set_name
-    FROM pglogical.replication_set
-    WHERE set_name LIKE 'test%' AND set_name <> 'test1'
-    ORDER BY set_name
+    SELECT name
+    FROM pgl_ddl_deploy.rep_set_wrapper()
+    WHERE name LIKE 'test%' AND name <> 'test1'
+    ORDER BY name
 LOOP
 
-PERFORM pgl_ddl_deploy.deploy(v_rec.set_name);
+PERFORM pgl_ddl_deploy.deploy(v_rec.name);
 
 END LOOP;
 
 END$$;
 
 --Now that we are on highest version, ensure WARNING shows
+CREATE TEMP TABLE repset AS
 SELECT pglogical.create_replication_set
 (set_name:='testtemp'
 ,replicate_insert:=TRUE
 ,replicate_update:=TRUE
 ,replicate_delete:=TRUE
-,replicate_truncate:=TRUE)
-INTO TEMP repset;
+,replicate_truncate:=TRUE);
 
 DROP TABLE repset;
 

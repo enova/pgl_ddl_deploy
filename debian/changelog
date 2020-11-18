@@ -1,3 +1,10 @@
+pgl-ddl-deploy (2.0.0-1) unstable; urgency=medium
+
+  * Support for Native Logical Replication
+  * Support for Postgres 13
+
+ -- Jeremy Finzel <jfinzel@enova.com>  Fri, 06 Nov 2020 12:32:30 -0600
+
 pgl-ddl-deploy (1.7.0-2) UNRELEASED; urgency=low
 
   * Trim trailing whitespace.

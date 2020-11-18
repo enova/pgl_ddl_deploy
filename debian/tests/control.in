@@ -1,0 +1,3 @@
+Depends: @, postgresql-server-dev-all, postgresql-contrib-PGVERSION, postgresql-PGVERSION-pglogical
+Tests: installcheck
+Restrictions: allow-stderr

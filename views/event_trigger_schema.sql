@@ -1,14 +1,14 @@
 CREATE OR REPLACE VIEW pgl_ddl_deploy.event_trigger_schema AS
 WITH vars AS
 (SELECT
-  id,
+  sc.id,
    set_name,
-  'pgl_ddl_deploy.auto_rep_ddl_create_'||id::TEXT||'_'||set_name AS auto_replication_create_function_name,
-  'pgl_ddl_deploy.auto_rep_ddl_drop_'||id::TEXT||'_'||set_name AS auto_replication_drop_function_name,
-  'pgl_ddl_deploy.auto_rep_ddl_unsupp_'||id::TEXT||'_'||set_name AS auto_replication_unsupported_function_name,
-  'auto_rep_ddl_create_'||id::TEXT||'_'||set_name AS auto_replication_create_trigger_name,
-  'auto_rep_ddl_drop_'||id::TEXT||'_'||set_name AS auto_replication_drop_trigger_name,
-  'auto_rep_ddl_unsupp_'||id::TEXT||'_'||set_name AS auto_replication_unsupported_trigger_name,
+  'pgl_ddl_deploy.auto_rep_ddl_create_'||sc.id::TEXT||'_'||set_name AS auto_replication_create_function_name,
+  'pgl_ddl_deploy.auto_rep_ddl_drop_'||sc.id::TEXT||'_'||set_name AS auto_replication_drop_function_name,
+  'pgl_ddl_deploy.auto_rep_ddl_unsupp_'||sc.id::TEXT||'_'||set_name AS auto_replication_unsupported_function_name,
+  'auto_rep_ddl_create_'||sc.id::TEXT||'_'||set_name AS auto_replication_create_trigger_name,
+  'auto_rep_ddl_drop_'||sc.id::TEXT||'_'||set_name AS auto_replication_drop_trigger_name,
+  'auto_rep_ddl_unsupp_'||sc.id::TEXT||'_'||set_name AS auto_replication_unsupported_trigger_name,
   include_schema_regex,
   include_only_repset_tables,
   create_tags,
@@ -17,6 +17,7 @@ WITH vars AS
   include_everything,
   signal_blocking_subscriber_sessions,
   subscriber_lock_timeout,
+  sc.driver,
 
   /****
   These constants in DECLARE portion of all functions is identical and can be shared
@@ -57,10 +58,11 @@ WITH vars AS
   c_exception_msg TEXT = 'Deployment exception logged in pgl_ddl_deploy.exceptions';
 
   --Configurable options in function setup
-  c_set_config_id INT = $BUILD$||id::TEXT||$BUILD$;
+  c_set_config_id INT = $BUILD$||sc.id::TEXT||$BUILD$;
   -- Even though pglogical supports an array of sets, we only pipe DDL through one at a time
   -- So c_set_name is a text not text[] data type.
   c_set_name TEXT = '$BUILD$||set_name||$BUILD$';
+  c_driver pgl_ddl_deploy.driver = '$BUILD$||sc.driver||$BUILD$';
   c_include_schema_regex TEXT = $BUILD$||COALESCE(''''||include_schema_regex||'''','NULL')||$BUILD$;
   c_lock_safe_deployment BOOLEAN = $BUILD$||lock_safe_deployment||$BUILD$;
   c_allow_multi_statements BOOLEAN = $BUILD$||allow_multi_statements||$BUILD$;
@@ -202,7 +204,7 @@ WITH vars AS
         END IF;
 
         --Get provider name, in order only to run command on a subscriber to this provider
-        c_provider_name:=(SELECT n.node_name FROM pglogical.node n INNER JOIN pglogical.local_node ln USING (node_id));
+        c_provider_name:=pgl_ddl_deploy.provider_node_name(c_driver);
 
         /*
           Build replication DDL command which will conditionally run only on the subscriber
@@ -217,12 +219,22 @@ WITH vars AS
             $INNER_BLOCK$||c_exec_prefix||v_ddl_sql_sent||c_exec_suffix||$INNER_BLOCK$
             ;
         $INNER_BLOCK$;
+        RAISE DEBUG 'v_full_ddl: %', v_full_ddl;
+        RAISE DEBUG 'c_set_config_id: %', c_set_config_id;
+        RAISE DEBUG 'c_set_name: %', c_set_name;
+        RAISE DEBUG 'c_driver: %', c_driver;
+        RAISE DEBUG 'v_ddl_sql_sent: %', v_ddl_sql_sent;
 
         v_sql:=$INNER_BLOCK$
-        SELECT pglogical.replicate_ddl_command($REPLICATE_DDL_COMMAND$
+        SELECT $BUILD$||CASE
+            WHEN sc.driver = 'native'
+            THEN 'pgl_ddl_deploy'
+            WHEN sc.driver = 'pglogical'
+            THEN 'pglogical'
+            ELSE 'ERROR-EXCEPTION' END||$BUILD$.replicate_ddl_command($REPLICATE_DDL_COMMAND$
         SELECT pgl_ddl_deploy.subscriber_command
         (
-          p_provider_name := $INNER_BLOCK$||quote_literal(c_provider_name)||$INNER_BLOCK$,
+          p_provider_name := $INNER_BLOCK$||COALESCE(quote_literal(c_provider_name), 'NULL')||$INNER_BLOCK$,
           p_set_name := ARRAY[$INNER_BLOCK$||quote_literal(c_set_name)||$INNER_BLOCK$],
           p_nspname := $INNER_BLOCK$||COALESCE(quote_literal(v_nspname), 'NULL')::TEXT||$INNER_BLOCK$,
           p_relname := $INNER_BLOCK$||COALESCE(quote_literal(v_relname), 'NULL')::TEXT||$INNER_BLOCK$,
@@ -232,14 +244,15 @@ WITH vars AS
           p_set_config_id := $INNER_BLOCK$||c_set_config_id::TEXT||$INNER_BLOCK$,
           p_queue_subscriber_failures := $INNER_BLOCK$||c_queue_subscriber_failures||$INNER_BLOCK$,
           p_signal_blocking_subscriber_sessions := $INNER_BLOCK$||COALESCE(quote_literal(c_signal_blocking_subscriber_sessions),'NULL')||$INNER_BLOCK$,
-          p_lock_timeout := $INNER_BLOCK$||COALESCE(c_subscriber_lock_timeout, 3000)||$INNER_BLOCK$
+          p_lock_timeout := $INNER_BLOCK$||COALESCE(c_subscriber_lock_timeout, 3000)||$INNER_BLOCK$,
+          p_driver := $INNER_BLOCK$||quote_literal(c_driver)||$INNER_BLOCK$
         );
         $REPLICATE_DDL_COMMAND$,
         --Pipe this DDL command through chosen replication set
         ARRAY['$INNER_BLOCK$||c_set_name||$INNER_BLOCK$']);
         $INNER_BLOCK$;
         
-        RAISE DEBUG '%', v_sql;
+        RAISE DEBUG 'v_sql: %', v_sql;
         EXECUTE v_sql;
 
         INSERT INTO pgl_ddl_deploy.events
@@ -304,10 +317,9 @@ WITH vars AS
     AND NOT EXISTS
     (SELECT 1
     FROM pgl_ddl_deploy.rep_set_table_wrapper() rsr
-    INNER JOIN pglogical.replication_set r
-      ON r.set_id = rsr.set_id
-    WHERE r.set_name = c_set_name
-      AND rsr.set_reloid = c.oid)
+    WHERE rsr.name = c_set_name
+      AND rsr.relid = c.oid
+      AND rsr.driver = c_driver)
   $BUILD$::TEXT AS shared_repl_set_tables,
 
   $BUILD$
@@ -333,10 +345,10 @@ WITH vars AS
                 (
                 SELECT 1
                 FROM pgl_ddl_deploy.rep_set_table_wrapper() rsr
-                INNER JOIN pglogical.replication_set rs USING (set_id)
-                WHERE rsr.set_reloid = c.objid
+                WHERE rsr.relid = c.objid
                   AND c.object_type in('table','table column','table constraint')
-                  AND rs.set_name = '$BUILD$||set_name||$BUILD$'
+                  AND rsr.name = '$BUILD$||sc.set_name||$BUILD$'
+                  AND rsr.driver = '$BUILD$||sc.driver||$BUILD$'
                 )
               )
             )
@@ -357,8 +369,8 @@ WITH vars AS
             THEN 1
           ELSE 0 END) AS exclude_always_match_count
   $BUILD$::TEXT AS shared_match_count
-FROM pglogical.replication_set rs
-INNER JOIN pgl_ddl_deploy.set_configs sc USING (set_name)
+FROM pgl_ddl_deploy.rep_set_wrapper() rs
+INNER JOIN pgl_ddl_deploy.set_configs sc ON sc.set_name = rs.name AND sc.driver = rs.driver 
 )
 
 , build AS (
@@ -376,6 +388,24 @@ SELECT
   auto_replication_create_trigger_name,
   auto_replication_drop_trigger_name,
   auto_replication_unsupported_trigger_name,
+
+CASE WHEN driver = 'pglogical' THEN '--no-op pglogical diver'::TEXT
+WHEN driver = 'native' THEN $BUILD$
+DO $$
+BEGIN
+
+IF NOT EXISTS (SELECT 1
+FROM pg_publication_tables
+WHERE pubname = '$BUILD$||set_name||$BUILD$'
+AND schemaname = 'pgl_ddl_deploy'
+AND tablename = 'queue') THEN
+    ALTER PUBLICATION $BUILD$||quote_ident(set_name)||$BUILD$
+    ADD TABLE pgl_ddl_deploy.queue;
+END IF;
+
+END$$;
+$BUILD$
+END AS add_queue_table_to_replication,
 
 CASE WHEN create_tags IS NULL THEN '--no-op-null-create-tags'::TEXT ELSE
 $BUILD$
@@ -445,10 +475,11 @@ BEGIN
           purpose is to only replicate keep the structure synchronized on the subscriber with no data.
         **/
         IF c_create_tags && '{"CREATE TABLE"}' AND NOT $BUILD$||include_only_repset_tables||$BUILD$ AND NOT $BUILD$||ddl_only_replication||$BUILD$ THEN
-          PERFORM pglogical.replication_set_add_table(
-            set_name:=c_set_name
-            ,relation:=c.oid
-            ,synchronize_data:=false
+          PERFORM pgl_ddl_deploy.add_table_to_replication(
+            p_driver:=c_driver
+            ,p_set_name:=c_set_name
+            ,p_relation:=c.oid
+            ,p_synchronize_data:=false
           )
           $BUILD$||shared_repl_set_tables||$BUILD$;
         END IF;
@@ -655,7 +686,8 @@ SELECT
   b.auto_replication_unsupported_trigger,
   b.undeploy_sql,
   b.undeploy_sql||
-  auto_replication_function||$BUILD$
+  b.add_queue_table_to_replication||$BUILD$
+  $BUILD$||auto_replication_function||$BUILD$
   $BUILD$||auto_replication_drop_function||$BUILD$
   $BUILD$||auto_replication_unsupported_function||$BUILD$
   $BUILD$||auto_replication_trigger||$BUILD$
