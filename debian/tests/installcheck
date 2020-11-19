@@ -1,2 +1,2 @@
 #!/bin/sh
-pg_buildext -o shared_preload_libraries=pglogical installcheck
+pg_buildext -o shared_preload_libraries=pglogical -o wal_level=logical installcheck
