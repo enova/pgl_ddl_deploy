@@ -1,5 +1,11 @@
 pgl-ddl-deploy (2.0.0-1) unstable; urgency=medium
 
+  * Regression fix - add -o wal_level=logical
+
+ -- Jeremy Finzel <jfinzel@enova.com>  Thu, 19 Nov 2020 07:46:13 -0600
+
+pgl-ddl-deploy (2.0.0-1) unstable; urgency=medium
+
   * Support for Native Logical Replication
   * Support for Postgres 13
 
