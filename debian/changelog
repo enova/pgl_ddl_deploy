@@ -1,8 +1,14 @@
-pgl-ddl-deploy (2.0.0-1) unstable; urgency=medium
+pgl-ddl-deploy (2.0.0-2) unstable; urgency=medium
 
+  [ Jeremy Finzel ]
   * Regression fix - add -o wal_level=logical
 
- -- Jeremy Finzel <jfinzel@enova.com>  Thu, 19 Nov 2020 07:46:13 -0600
+  [ Christian Ehrhardt ]
+  * d/changelog: fix new version to be >2.0.0-1
+  * revert unmentioned drop of needs-root in d/t/control
+  * d/t/control: update test dependencies for postgresql-13
+
+ -- Christian Ehrhardt <christian.ehrhardt@canonical.com>  Mon, 07 Dec 2020 14:18:20 +0100
 
 pgl-ddl-deploy (2.0.0-1) unstable; urgency=medium
 
