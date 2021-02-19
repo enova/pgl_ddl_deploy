@@ -36,9 +36,7 @@ BEGIN
 IF current_setting('server_version_num')::INT >= 100000 THEN
     SELECT COUNT(1) INTO v_ct FROM pg_publication_tables WHERE schemaname = 'pgl_ddl_deploy' AND tablename = 'queue';
     RAISE LOG 'v_ct: %', v_ct;
-    IF v_ct != 8 THEN
-        RAISE EXCEPTION 'Count does not match expected: v_ct: %', v_ct;
-    END IF;
+    PERFORM verify_count(v_ct, 8);
 END IF;
 
 END$$;

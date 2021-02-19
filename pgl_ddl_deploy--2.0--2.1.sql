@@ -1,3 +1,8 @@
+/* pgl_ddl_deploy--2.0--2.1.sql */
+
+-- complain if script is sourced in psql, rather than via CREATE EXTENSION
+\echo Use "CREATE EXTENSION pgl_ddl_deploy" to load this file. \quit
+
 CREATE OR REPLACE FUNCTION pgl_ddl_deploy.execute_queued_ddl()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -66,3 +71,5 @@ END IF;
 END;
 $function$
 ;
+
+
