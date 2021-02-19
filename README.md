@@ -19,10 +19,12 @@ Transparent DDL replication for Postgres 9.5+ for both pglogical and native logi
 - [DDL involving multiple tables](#multi_tables)
 - [Unsupported Commands](#unsupported)
 - [Multi-Statement Client SQL Limitations](#multi_statement)
+- [Native Logical Supported Configurations](#native_support)
 
 [Resolving DDL Replication Issues](#resolve)
 - [Resolving Failed DDL on Subscribers](#resolve_failed)
 - [Resolving Unhandled DDL](#resolve_unhandled)
+- [Disable DDL Replication on Subscriber](#disable_ddl)
 
 [For Developers](#devs)
 - [Help Wanted Features](#help_wanted)
@@ -716,6 +718,14 @@ The `unhandled` table and `WARNING` logs are designed to be leveraged with
 monitoring to create alerting around when manual intervention is required for
 DDL changes.
 
+## <a name="native_support"></a>Native Logical Supported Configurations
+
+The only known configuration limitation for native logical DDL replication is that
+only a publication that includes replicating inserts can support DDL replication.  This relates
+to how the DDL queueing mechanism works.  The default `CREATE PUBLICATION` in postgres
+includes publishing inserts.  It can also be configured specifically with `WITH (publish = 'insert')`.
+For more details see https://www.postgresql.org/docs/current/sql-createpublication.html.
+
 # <a name="resolve"></a>Resolving DDL Replication Issues
 
 ## <a name="resolve_failed"></a>Resolving Failed DDL on Subscribers
@@ -818,6 +828,26 @@ if there is an unhandled deployment, for example, by sending an exception
 through `replicate_ddl_command`.  But such a feature may cause additional and
 unnecessary administration overhead, since it is likely the strictness of
 replication will cause the system to break when it should. 
+
+## <a name="disable_ddl"></a>Disable DDL Replication on Subscriber
+
+The following applies to native logical replication only.
+
+As a last resort, you might find some unexpected problem where you want to disable DDL
+replication on the subscriber because you are in an error loop.  This should be done
+very cautiously and as a last resort.
+
+Disable the trigger on the DDL queue table to ignore all DDL replication on subscriber:
+```
+ALTER TABLE pgl_ddl_deploy.queue DISABLE TRIGGER execute_queued_ddl;
+``` 
+
+Do what you need to do for manual fixes.  If you suspect a bug, please report it.  When
+you are finished, you MUST ENABLE THE TRIGGER IN REPLICATION MODE ONLY:
+```
+ALTER TABLE pgl_ddl_deploy.queue ENABLE REPLICA TRIGGER execute_queued_ddl;
+``` 
+
 
 # <a name="devs"></a>For Developers
 

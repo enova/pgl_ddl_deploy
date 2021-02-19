@@ -1,3 +1,9 @@
+pgl-ddl-deploy (2.1.0-1) unstable; urgency=medium
+
+  * Fix duplicate issue with multiple subscriptions 
+
+ -- Jeremy Finzel <jfinzel@enova.com>  Fri, 19 Feb 2021 11:21:59 -0600
+
 pgl-ddl-deploy (2.0.0-2) unstable; urgency=medium
 
   [ Jeremy Finzel ]

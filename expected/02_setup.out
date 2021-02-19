@@ -82,3 +82,15 @@ END IF;
 END;
 $BODY$
 LANGUAGE plpgsql;
+CREATE FUNCTION verify_count(ct int, expected int) RETURNS BOOLEAN AS $BODY$
+BEGIN
+
+RAISE LOG 'ct: %', ct;
+IF ct != expected THEN
+    RAISE EXCEPTION 'Count % does not match expected count of %', ct, expected;
+END IF;
+
+RETURN TRUE;
+
+END$BODY$
+LANGUAGE plpgsql;
