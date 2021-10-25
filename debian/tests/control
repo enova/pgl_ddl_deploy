@@ -1,4 +1,4 @@
 # requires user "postgres", so run as root
-Depends: @, postgresql-server-dev-all, postgresql-contrib-13, postgresql-13-pglogical
+Depends: @, make, postgresql-contrib-14, postgresql-14-pglogical
 Tests: installcheck
 Restrictions: allow-stderr, needs-root
