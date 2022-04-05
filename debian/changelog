@@ -1,3 +1,13 @@
+pgl-ddl-deploy (2.1.0-2) unstable; urgency=medium
+
+  * Team upload for PostgreSQL 14.
+  * Use dh --with pgxs.
+  * R³: no.
+  * DH 13.
+  * debian/tests: Use 'make' instead of postgresql-server-dev-all.
+
+ -- Christoph Berg <myon@debian.org>  Mon, 25 Oct 2021 12:51:30 +0200
+
 pgl-ddl-deploy (2.1.0-1) unstable; urgency=medium
 
   * Fix duplicate issue with multiple subscriptions 
