@@ -15,6 +15,7 @@ FROM sets s;
 DROP TABLE repsets;
 CREATE ROLE test_pgl_ddl_deploy LOGIN;
 GRANT CREATE ON DATABASE contrib_regression TO test_pgl_ddl_deploy;
+GRANT CREATE ON SCHEMA public TO PUBLIC;
 SELECT pgl_ddl_deploy.add_role(oid) FROM pg_roles WHERE rolname = 'test_pgl_ddl_deploy';
  add_role 
 ----------
