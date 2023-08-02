@@ -1,0 +1,260 @@
+SET log_min_messages TO warning;
+SET ROLE test_pgl_ddl_deploy;
+CREATE SCHEMA foobar;
+--This should never be allowed
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "CREATE TABLE foo(id int primary key); INSERT INTO foo (id) VALUES (1),(2),(3); DROP TABLE foo;"
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+CREATE TABLE
+INSERT 0 3
+DROP TABLE
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "CREATE TABLE foobar.foo(id int primary key); INSERT INTO foobar.foo (id) VALUES (1),(2),(3); DROP TABLE foobar.foo;"
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+CREATE TABLE
+INSERT 0 3
+DROP TABLE
+SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |         ddl_sql_raw         |        ddl_sql_sent         
+----------+-----------------------------+-----------------------------
+ test8    | CREATE SCHEMA foobar;       | CREATE SCHEMA foobar;
+ test7    | CREATE SCHEMA foobar;       | CREATE SCHEMA foobar;
+ test6    | CREATE SCHEMA foobar;       | CREATE SCHEMA foobar;
+ test5    | CREATE SCHEMA foobar;       | CREATE SCHEMA foobar;
+ test4    | CREATE SCHEMA foobar;       | CREATE SCHEMA foobar;
+ test3    | CREATE SCHEMA foobar;       | CREATE SCHEMA foobar;
+ test2    | CREATE SCHEMA foobar;       | CREATE SCHEMA foobar;
+ test1    | CREATE SCHEMA foobar;       | CREATE SCHEMA foobar;
+ test8    | DROP SCHEMA foobar CASCADE; | DROP SCHEMA foobar CASCADE;
+ test7    | DROP SCHEMA foobar CASCADE; | DROP SCHEMA foobar CASCADE;
+(10 rows)
+
+SELECT set_name, ddl_sql_raw, command_tag, reason FROM pgl_ddl_deploy.unhandled ORDER BY id DESC LIMIT 10;
+ set_name |                                                     ddl_sql_raw                                                     | command_tag  |        reason         
+----------+---------------------------------------------------------------------------------------------------------------------+--------------+-----------------------
+ test8    | CREATE TABLE foobar.foo(id int primary key); INSERT INTO foobar.foo (id) VALUES (1),(2),(3); DROP TABLE foobar.foo; | CREATE TABLE | rejected_command_tags
+ test7    | CREATE TABLE foobar.foo(id int primary key); INSERT INTO foobar.foo (id) VALUES (1),(2),(3); DROP TABLE foobar.foo; | CREATE TABLE | rejected_command_tags
+ test6    | CREATE TABLE foobar.foo(id int primary key); INSERT INTO foobar.foo (id) VALUES (1),(2),(3); DROP TABLE foobar.foo; | CREATE TABLE | rejected_command_tags
+ test5    | CREATE TABLE foobar.foo(id int primary key); INSERT INTO foobar.foo (id) VALUES (1),(2),(3); DROP TABLE foobar.foo; | CREATE TABLE | rejected_command_tags
+ test4    | CREATE TABLE foobar.foo(id int primary key); INSERT INTO foobar.foo (id) VALUES (1),(2),(3); DROP TABLE foobar.foo; | CREATE TABLE | rejected_command_tags
+ test3    | CREATE TABLE foobar.foo(id int primary key); INSERT INTO foobar.foo (id) VALUES (1),(2),(3); DROP TABLE foobar.foo; | CREATE TABLE | rejected_command_tags
+ test2    | CREATE TABLE foobar.foo(id int primary key); INSERT INTO foobar.foo (id) VALUES (1),(2),(3); DROP TABLE foobar.foo; | CREATE TABLE | rejected_command_tags
+ test1    | CREATE TABLE foobar.foo(id int primary key); INSERT INTO foobar.foo (id) VALUES (1),(2),(3); DROP TABLE foobar.foo; | CREATE TABLE | rejected_command_tags
+ test4    | CREATE TABLE foo(id int primary key); INSERT INTO foo (id) VALUES (1),(2),(3); DROP TABLE foo;                      | CREATE TABLE | rejected_command_tags
+ test3    | CREATE TABLE foo(id int primary key); INSERT INTO foo (id) VALUES (1),(2),(3); DROP TABLE foo;                      | CREATE TABLE | rejected_command_tags
+(10 rows)
+
+--This should be allowed by some configurations, and others not
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; CREATE TABLE foo(id int primary key); COMMIT;"
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+BEGIN
+CREATE TABLE
+COMMIT
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "BEGIN; CREATE TABLE foobar.foo(id int primary key); COMMIT;"
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+BEGIN
+CREATE TABLE
+COMMIT
+SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |                         ddl_sql_raw                         |                  ddl_sql_sent                  
+----------+-------------------------------------------------------------+------------------------------------------------
+ test7    | BEGIN; CREATE TABLE foobar.foo(id int primary key); COMMIT; |  CREATE TABLE foobar.foo(id int primary key); 
+ test5    | BEGIN; CREATE TABLE foobar.foo(id int primary key); COMMIT; |  CREATE TABLE foobar.foo(id int primary key); 
+ test3    | BEGIN; CREATE TABLE foobar.foo(id int primary key); COMMIT; |  CREATE TABLE foobar.foo(id int primary key); 
+ test1    | BEGIN; CREATE TABLE foobar.foo(id int primary key); COMMIT; |  CREATE TABLE foobar.foo(id int primary key); 
+ test3    | BEGIN; CREATE TABLE foo(id int primary key); COMMIT;        |  CREATE TABLE foo(id int primary key); 
+ test1    | BEGIN; CREATE TABLE foo(id int primary key); COMMIT;        |  CREATE TABLE foo(id int primary key); 
+ test8    | CREATE SCHEMA foobar;                                       | CREATE SCHEMA foobar;
+ test7    | CREATE SCHEMA foobar;                                       | CREATE SCHEMA foobar;
+ test6    | CREATE SCHEMA foobar;                                       | CREATE SCHEMA foobar;
+ test5    | CREATE SCHEMA foobar;                                       | CREATE SCHEMA foobar;
+(10 rows)
+
+SELECT set_name, ddl_sql_raw, command_tag, reason FROM pgl_ddl_deploy.unhandled ORDER BY id DESC LIMIT 10;
+ set_name |                                                     ddl_sql_raw                                                     | command_tag  |          reason          
+----------+---------------------------------------------------------------------------------------------------------------------+--------------+--------------------------
+ test8    | BEGIN; CREATE TABLE foobar.foo(id int primary key); COMMIT;                                                         | CREATE TABLE | rejected_multi_statement
+ test6    | BEGIN; CREATE TABLE foobar.foo(id int primary key); COMMIT;                                                         | CREATE TABLE | rejected_multi_statement
+ test4    | BEGIN; CREATE TABLE foobar.foo(id int primary key); COMMIT;                                                         | CREATE TABLE | rejected_multi_statement
+ test2    | BEGIN; CREATE TABLE foobar.foo(id int primary key); COMMIT;                                                         | CREATE TABLE | rejected_multi_statement
+ test4    | BEGIN; CREATE TABLE foo(id int primary key); COMMIT;                                                                | CREATE TABLE | rejected_multi_statement
+ test2    | BEGIN; CREATE TABLE foo(id int primary key); COMMIT;                                                                | CREATE TABLE | rejected_multi_statement
+ test8    | CREATE TABLE foobar.foo(id int primary key); INSERT INTO foobar.foo (id) VALUES (1),(2),(3); DROP TABLE foobar.foo; | CREATE TABLE | rejected_command_tags
+ test7    | CREATE TABLE foobar.foo(id int primary key); INSERT INTO foobar.foo (id) VALUES (1),(2),(3); DROP TABLE foobar.foo; | CREATE TABLE | rejected_command_tags
+ test6    | CREATE TABLE foobar.foo(id int primary key); INSERT INTO foobar.foo (id) VALUES (1),(2),(3); DROP TABLE foobar.foo; | CREATE TABLE | rejected_command_tags
+ test5    | CREATE TABLE foobar.foo(id int primary key); INSERT INTO foobar.foo (id) VALUES (1),(2),(3); DROP TABLE foobar.foo; | CREATE TABLE | rejected_command_tags
+(10 rows)
+
+--Run all commands through cli to avoid permissions issues
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "DROP TABLE foo CASCADE;"
+DROP TABLE
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "DROP TABLE foobar.foo CASCADE;"
+DROP TABLE
+--This should be allowed by some configurations, and others not
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "CREATE TABLE foo(id int primary key); DROP TABLE foo CASCADE;"
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+CREATE TABLE
+DROP TABLE
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE;"
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+CREATE TABLE
+DROP TABLE
+SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |                                 ddl_sql_raw                                 |                                ddl_sql_sent                                 
+----------+-----------------------------------------------------------------------------+-----------------------------------------------------------------------------
+ test7    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE;
+ test5    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE;
+ test3    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE;
+ test1    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE;
+ test3    | CREATE TABLE foo(id int primary key); DROP TABLE foo CASCADE;               | CREATE TABLE foo(id int primary key); DROP TABLE foo CASCADE;
+ test1    | CREATE TABLE foo(id int primary key); DROP TABLE foo CASCADE;               | CREATE TABLE foo(id int primary key); DROP TABLE foo CASCADE;
+ test8    | DROP TABLE foobar.foo CASCADE;                                              | DROP TABLE foobar.foo CASCADE;
+ test7    | DROP TABLE foobar.foo CASCADE;                                              | DROP TABLE foobar.foo CASCADE;
+ test6    | DROP TABLE foobar.foo CASCADE;                                              | DROP TABLE foobar.foo CASCADE;
+ test5    | DROP TABLE foobar.foo CASCADE;                                              | DROP TABLE foobar.foo CASCADE;
+(10 rows)
+
+SELECT set_name, ddl_sql_raw, command_tag, reason FROM pgl_ddl_deploy.unhandled ORDER BY id DESC LIMIT 10;
+ set_name |                                 ddl_sql_raw                                 | command_tag  |          reason          
+----------+-----------------------------------------------------------------------------+--------------+--------------------------
+ test8    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE | rejected_multi_statement
+ test6    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE | rejected_multi_statement
+ test4    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE | rejected_multi_statement
+ test2    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE | rejected_multi_statement
+ test4    | CREATE TABLE foo(id int primary key); DROP TABLE foo CASCADE;               | CREATE TABLE | rejected_multi_statement
+ test2    | CREATE TABLE foo(id int primary key); DROP TABLE foo CASCADE;               | CREATE TABLE | rejected_multi_statement
+ test8    | BEGIN; CREATE TABLE foobar.foo(id int primary key); COMMIT;                 | CREATE TABLE | rejected_multi_statement
+ test6    | BEGIN; CREATE TABLE foobar.foo(id int primary key); COMMIT;                 | CREATE TABLE | rejected_multi_statement
+ test4    | BEGIN; CREATE TABLE foobar.foo(id int primary key); COMMIT;                 | CREATE TABLE | rejected_multi_statement
+ test2    | BEGIN; CREATE TABLE foobar.foo(id int primary key); COMMIT;                 | CREATE TABLE | rejected_multi_statement
+(10 rows)
+
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "CREATE TABLE foo(id int primary key);"
+CREATE TABLE
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "CREATE TABLE foobar.foo(id int primary key);"
+CREATE TABLE
+--This should be allowed by some but not others
+\! PGOPTIONS='--client-min-messages=warning' psql -d contrib_regression  -c "DROP TABLE foo, foobar.foo CASCADE;"
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+WARNING:  Unhandled deployment logged in pgl_ddl_deploy.unhandled
+DROP TABLE
+SELECT set_name, ddl_sql_raw, ddl_sql_sent FROM pgl_ddl_deploy.events ORDER BY id DESC LIMIT 10;
+ set_name |                 ddl_sql_raw                  |                 ddl_sql_sent                 
+----------+----------------------------------------------+----------------------------------------------
+ test4    | DROP TABLE foo, foobar.foo CASCADE;          | DROP TABLE foo, foobar.foo CASCADE;
+ test3    | DROP TABLE foo, foobar.foo CASCADE;          | DROP TABLE foo, foobar.foo CASCADE;
+ test2    | DROP TABLE foo, foobar.foo CASCADE;          | DROP TABLE foo, foobar.foo CASCADE;
+ test1    | DROP TABLE foo, foobar.foo CASCADE;          | DROP TABLE foo, foobar.foo CASCADE;
+ test8    | CREATE TABLE foobar.foo(id int primary key); | CREATE TABLE foobar.foo(id int primary key);
+ test7    | CREATE TABLE foobar.foo(id int primary key); | CREATE TABLE foobar.foo(id int primary key);
+ test6    | CREATE TABLE foobar.foo(id int primary key); | CREATE TABLE foobar.foo(id int primary key);
+ test5    | CREATE TABLE foobar.foo(id int primary key); | CREATE TABLE foobar.foo(id int primary key);
+ test4    | CREATE TABLE foobar.foo(id int primary key); | CREATE TABLE foobar.foo(id int primary key);
+ test3    | CREATE TABLE foobar.foo(id int primary key); | CREATE TABLE foobar.foo(id int primary key);
+(10 rows)
+
+SELECT set_name, ddl_sql_raw, command_tag, reason FROM pgl_ddl_deploy.unhandled ORDER BY id DESC LIMIT 10;
+ set_name |                                 ddl_sql_raw                                 | command_tag  |          reason          
+----------+-----------------------------------------------------------------------------+--------------+--------------------------
+ test8    | DROP TABLE foo, foobar.foo CASCADE;                                         | DROP TABLE   | mixed_objects
+ test7    | DROP TABLE foo, foobar.foo CASCADE;                                         | DROP TABLE   | mixed_objects
+ test6    | DROP TABLE foo, foobar.foo CASCADE;                                         | DROP TABLE   | mixed_objects
+ test5    | DROP TABLE foo, foobar.foo CASCADE;                                         | DROP TABLE   | mixed_objects
+ test8    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE | rejected_multi_statement
+ test6    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE | rejected_multi_statement
+ test4    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE | rejected_multi_statement
+ test2    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE | rejected_multi_statement
+ test4    | CREATE TABLE foo(id int primary key); DROP TABLE foo CASCADE;               | CREATE TABLE | rejected_multi_statement
+ test2    | CREATE TABLE foo(id int primary key); DROP TABLE foo CASCADE;               | CREATE TABLE | rejected_multi_statement
+(10 rows)
+
+--Resolutions
+SELECT pgl_ddl_deploy.resolve_unhandled(id, 'DBA superhero deployed it manually on the subscribers!')
+FROM pgl_ddl_deploy.unhandled;
+ resolve_unhandled 
+-------------------
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+(28 rows)
+
+--Test with no rows and a dummy row
+SELECT pgl_ddl_deploy.resolve_exception(id, 'Mystery solved')
+FROM pgl_ddl_deploy.exceptions;
+ resolve_exception 
+-------------------
+(0 rows)
+
+BEGIN;
+INSERT INTO pgl_ddl_deploy.exceptions (set_name) VALUES ('test1');
+SELECT pgl_ddl_deploy.resolve_exception(id, 'Mystery solved')
+FROM pgl_ddl_deploy.exceptions;
+ resolve_exception 
+-------------------
+ t
+(1 row)
+
+ROLLBACK;
+SELECT resolved, resolved_notes, set_name, ddl_sql_raw, command_tag, reason FROM pgl_ddl_deploy.unhandled ORDER BY id DESC LIMIT 10;
+ resolved |                     resolved_notes                     | set_name |                                 ddl_sql_raw                                 | command_tag  |          reason          
+----------+--------------------------------------------------------+----------+-----------------------------------------------------------------------------+--------------+--------------------------
+ t        | DBA superhero deployed it manually on the subscribers! | test8    | DROP TABLE foo, foobar.foo CASCADE;                                         | DROP TABLE   | mixed_objects
+ t        | DBA superhero deployed it manually on the subscribers! | test7    | DROP TABLE foo, foobar.foo CASCADE;                                         | DROP TABLE   | mixed_objects
+ t        | DBA superhero deployed it manually on the subscribers! | test6    | DROP TABLE foo, foobar.foo CASCADE;                                         | DROP TABLE   | mixed_objects
+ t        | DBA superhero deployed it manually on the subscribers! | test5    | DROP TABLE foo, foobar.foo CASCADE;                                         | DROP TABLE   | mixed_objects
+ t        | DBA superhero deployed it manually on the subscribers! | test8    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE | rejected_multi_statement
+ t        | DBA superhero deployed it manually on the subscribers! | test6    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE | rejected_multi_statement
+ t        | DBA superhero deployed it manually on the subscribers! | test4    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE | rejected_multi_statement
+ t        | DBA superhero deployed it manually on the subscribers! | test2    | CREATE TABLE foobar.foo(id int primary key); DROP TABLE foobar.foo CASCADE; | CREATE TABLE | rejected_multi_statement
+ t        | DBA superhero deployed it manually on the subscribers! | test4    | CREATE TABLE foo(id int primary key); DROP TABLE foo CASCADE;               | CREATE TABLE | rejected_multi_statement
+ t        | DBA superhero deployed it manually on the subscribers! | test2    | CREATE TABLE foo(id int primary key); DROP TABLE foo CASCADE;               | CREATE TABLE | rejected_multi_statement
+(10 rows)
+
+SELECT * FROM pgl_ddl_deploy.exceptions;
+ id | set_name | pid | executed_at | ddl_sql | err_msg | err_state | set_config_id | resolved | resolved_notes 
+----+----------+-----+-------------+---------+---------+-----------+---------------+----------+----------------
+(0 rows)
+
