@@ -742,7 +742,7 @@ ALTER TABLE replicated.foo ADD COLUMN foo_id INT;
 ```
 - Consume the change in affected replication slot using
   `pg_logical_slot_get_changes` **up to specific LSN** of the transaction which
-included the DDL statement to get replication working again.
+included the DDL statement to get replication working again (this is only human readable for pglogical, not native).
 - You could also "trick" the DDL into applying - for example, by creating a dummy
 object that will allow the DDL to apply even if you don't need it, then discarding
 those objects once replication is working again.
@@ -791,6 +791,25 @@ SELECT id,
   succeeded
 FROM pgl_ddl_deploy.subscriber_logs
 WHERE id IN (SELECT next_subscriber_log_id FROM old);
+```
+
+### No resolution: Last resort
+The following is only applicable to native replication.
+
+Sometimes there are cases where things are broken and you either can't figure
+out how to work around it, or it may in fact be impossible to process a particular
+set of operations within a transaction automatically.  Although we would welcome
+a more proper feature to disable DDL replication on the subscriber, you can do so
+manually with the following command on the subscriber:
+```sql
+ALTER TABLE pgl_ddl_deploy.queue DISABLE TRIGGER execute_queued_ddl;
+```
+
+**NOTE** that DDL replication will be disabled so long as you have done this, although
+you will see any changes come through as new rows in the `queue` table.  BE SURE to
+re-enable the trigger as a `REPLICA TRIGGER` properly afterwards:
+```sql
+ALTER TABLE pgl_ddl_deploy.queue ENABLE REPLICA TRIGGER execute_queued_ddl;
 ```
 
 ## <a name="resolve_unhandled"></a>Resolving Unhandled DDL
