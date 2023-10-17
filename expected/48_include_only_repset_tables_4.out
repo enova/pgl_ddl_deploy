@@ -45,11 +45,11 @@ LOG:  Not processing DDL due to excluded subcommand(s): ENABLE TRIGGER: ALTER TA
 -- This contains a tag we want to ignore but we can't separate out the parts - see the warning message
 ALTER TABLE special.barz ADD COLUMN foo_id INT REFERENCES special.fooz (id_2);
 WARNING:  Filtering out more than one subcommand in one ALTER TABLE is not supported.
-                Allowing to proceed: Rejected: ADD CONSTRAINT (and recurse), SQL: ALTER TABLE special.barz ADD COLUMN foo_id INT REFERENCES special.fooz (id_2);
+                Allowing to proceed: Rejected: ADD CONSTRAINT, SQL: ALTER TABLE special.barz ADD COLUMN foo_id INT REFERENCES special.fooz (id_2);
 ALTER TABLE special.fooz ADD COLUMN bar_id INT;
 -- This one should be ignored as well
 ALTER TABLE special.fooz ADD CONSTRAINT coolness FOREIGN KEY (bar_id) REFERENCES special.barz (id_3);
-LOG:  Not processing DDL due to excluded subcommand(s): ADD CONSTRAINT (and recurse): ALTER TABLE special.fooz ADD CONSTRAINT coolness FOREIGN KEY (bar_id) REFERENCES special.barz (id_3);
+LOG:  Not processing DDL due to excluded subcommand(s): ADD CONSTRAINT: ALTER TABLE special.fooz ADD CONSTRAINT coolness FOREIGN KEY (bar_id) REFERENCES special.barz (id_3);
 SELECT c.set_name, ddl_sql_raw, ddl_sql_sent
 FROM pgl_ddl_deploy.events e
 INNER JOIN pgl_ddl_deploy.set_configs c ON c.id = e.set_config_id

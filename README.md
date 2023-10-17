@@ -39,6 +39,10 @@ https://innovation.enova.com/pursuing-postgres-ddl-replication/
 
 # <a name="release_notes"></a>Release Notes
 
+### Release 2.2
+Summary of changes:
+* Support for Postgres 16
+
 ### Release 2.0
 Summary of changes:
 * Support for DDL replication using Native Logical Replication
@@ -48,52 +52,6 @@ Summary of changes:
 Summary of changes:
 * Support for Postgres 12
 * Support for pglogical 2.3.0
-
-### Release 1.6
-Summary of changes:
-* Workaround pglogical 2.2.2 failure resulting from unstable `debug_query_string` results
-* Add more tags as default for common use cases
-* Bug fix: Fix raise message escape % bug
-* Bug fix: Only auto-add tables to replication if CREATE TABLE tag configured
-* Bug fix: Only set tag defaults on INSERT 
-
-### Release 1.5
-Summary of changes:
-* Add support for including every object without restriction in DDL for events like `GRANT`
-which do not provide access to the objects being modified.
-* Add support for killing and logging blocking processes on subscriber that prevent DDL execution
-
-### Release 1.4
-Summary of changes:
-
-* Feature: Allow filtering out ALTER TABLE statements by subcommand tags
-* Feature: Add `ddl_only_replication` option to allow copying structure and not auto-adding tables to replication.
-* Remove `dependency_update` function and implement more reliable dynamic `rep_set_table_wrapper` function
-* Allow `COMMENT` to be replicated with `include_only_repset_tables`
-* Add sequence for `set_configs` as an extension config
-* Refactored codebase with separated files for easier version control review
-
-### Release 1.3
-Summary of changes:
-
-* Fix missed renaming of columns or constraints for `include_only_repset_tables` configs
-* Added `undeploy` functions which allow you to drop DDL replication for only a given config
-* Add `is_deployed` column to `event_trigger_schema` to easily tell which configs are deployed. 
-
-### Release 1.2
-Summary of changes:
-
-* Fix a bug where unsupported event triggers are created for `include_only_repset_tables` configs,
-which only apply to `include_schema_regex` configs
-* Add grant to pglogical.replication_set to allow any user to fire event trigger function even for temp tables
-
-### Release 1.1
-Summary of changes:
-
-* Allow a customized set of command tags for event triggers in set_configs - defaulted to the original tags in 1.0.
-* Add DDL replication by the specific set of tables (include_only_repset_tables) in a replication set, instead of schema-only regex. This option only supports ALTER TABLE events
-* Add option to allow subscriber DDL to fail and be queued without breaking replication - useful for VIEWs and such which we want to replicate but we don't want failures to stop data replication - queue_subscriber_failures
-* Allow to mark unhandled events as resolved for monitoring purposes
 
 ## <a name="high_level"></a>High Level Description
 

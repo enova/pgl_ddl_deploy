@@ -175,7 +175,7 @@ WITH vars AS
                 SELECT subcommand,
                   c_exclude_alter_table_subcommands && ARRAY[subcommand] AS subcommand_is_excluded,
                   MAX(CASE WHEN c_exclude_alter_table_subcommands && ARRAY[subcommand] THEN 0 ELSE 1 END) OVER() AS contains_any_valid_subcommand
-                FROM unnest(pgl_ddl_deploy.get_altertable_subcmdtypes(v_cmd_rec.command)) AS subcommand
+                FROM unnest(pgl_ddl_deploy.get_altertable_subcmdinfo(v_cmd_rec.command)) AS subcommand
               )
 
               SELECT (SELECT string_agg(subcommand,', ') FROM subcommands WHERE subcommand_is_excluded),
