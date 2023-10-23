@@ -15,7 +15,7 @@ PG_MODULE_MAGIC;
 
 PG_FUNCTION_INFO_V1(get_command_type);
 PG_FUNCTION_INFO_V1(get_command_tag);
-PG_FUNCTION_INFO_V1(get_altertable_subcmdtypes);
+PG_FUNCTION_INFO_V1(get_altertable_subcmdinfo);
 
 /*
  * Return the textual representation of the struct type used to represent a
@@ -82,7 +82,7 @@ get_command_tag(PG_FUNCTION_ARGS)
  * command.
  */
 Datum
-get_altertable_subcmdtypes(PG_FUNCTION_ARGS)
+get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 {
 	CollectedCommand *cmd = (CollectedCommand *) PG_GETARG_POINTER(0);
 	ArrayBuildState *astate = NULL;
@@ -94,23 +94,83 @@ get_altertable_subcmdtypes(PG_FUNCTION_ARGS)
 	foreach(cell, cmd->d.alterTable.subcmds)
 	{
 		CollectedATSubcmd *sub = lfirst(cell);
-#if PG_VERSION_NUM >= 100000
-    AlterTableCmd *subcmd = castNode(AlterTableCmd, sub->parsetree);
+		AlterTableCmd *subcmd = castNode(AlterTableCmd, sub->parsetree);
 		const char *strtype;
-#else
-		AlterTableCmd *subcmd = (AlterTableCmd *) sub->parsetree;
-		const char *strtype;
-
-		Assert(IsA(subcmd, AlterTableCmd));
-#endif
 
 		switch (subcmd->subtype)
 		{
-			case AT_AddColumn:
-				strtype = "ADD COLUMN";
+#if PG_VERSION_NUM < 120000
+			case AT_AddOids:
+				strtype = "ADD OIDS";
 				break;
+			case AT_AddOidsRecurse:
+				strtype = "ADD OIDS (and recurse)";
+				break;
+#endif
+#if PG_VERSION_NUM >= 120000
+			case AT_CheckNotNull:
+				strtype = "CHECK NOT NULL";
+				break;
+#endif
+#if PG_VERSION_NUM >= 130000
+			case AT_CookedColumnDefault:
+			    strtype = "ALTER COLUMN SET DEFAULT (precooked)";
+			    break;
+#endif
+#if PG_VERSION_NUM < 160000
 			case AT_AddColumnRecurse:
 				strtype = "ADD COLUMN (and recurse)";
+				break;
+			case AT_DropColumnRecurse:
+				strtype = "DROP COLUMN (and recurse)";
+				break;
+			case AT_AddConstraintRecurse:
+				strtype = "ADD CONSTRAINT (and recurse)";
+				break;
+			case AT_ValidateConstraintRecurse:
+				strtype = "VALIDATE CONSTRAINT (and recurse)";
+				break;
+			case AT_DropConstraintRecurse:
+				strtype = "DROP CONSTRAINT (and recurse)";
+				break;
+#endif
+#if PG_VERSION_NUM >= 160000
+			case AT_DropExpression:
+				strtype = "DROP EXPRESSION";
+				break;
+			case AT_SetCompression:
+				strtype = "SET COMPRESSION";
+				break;
+			case AT_ReAddDomainConstraint:
+				strtype = "(re) ADD DOMAIN CONSTRAINT";
+				break;
+			case AT_SetAccessMethod:
+				strtype = "SET ACCESS METHOD";
+				break;
+			case AT_DetachPartition:
+				strtype = "DETACH PARTITION";
+				break;
+			case AT_AttachPartition:
+				strtype = "ATTACH PARTITION";
+				break;
+			case AT_DetachPartitionFinalize:
+				strtype = "DETACH PARTITION ... FINALIZE";
+				break;
+			case AT_AddIdentity:
+				strtype = "ADD IDENTITY";
+				break;
+			case AT_SetIdentity:
+				strtype = "SET IDENTITY";
+				break;
+			case AT_DropIdentity:
+				strtype = "DROP IDENTITY";
+				break;
+			case AT_ReAddStatistics:
+				strtype = "(re) ADD STATS";
+				break;
+#endif
+			case AT_AddColumn:
+				strtype = "ADD COLUMN";
 				break;
 			case AT_AddColumnToView:
 				strtype = "ADD COLUMN TO VIEW";
@@ -121,11 +181,6 @@ get_altertable_subcmdtypes(PG_FUNCTION_ARGS)
 			case AT_DropNotNull:
 				strtype = "DROP NOT NULL";
 				break;
-#if PG_VERSION_NUM >= 120000
-			case AT_CheckNotNull:
-				strtype = "CHECK NOT NULL";
-				break;
-#endif
 			case AT_SetNotNull:
 				strtype = "SET NOT NULL";
 				break;
@@ -144,9 +199,6 @@ get_altertable_subcmdtypes(PG_FUNCTION_ARGS)
 			case AT_DropColumn:
 				strtype = "DROP COLUMN";
 				break;
-			case AT_DropColumnRecurse:
-				strtype = "DROP COLUMN (and recurse)";
-				break;
 			case AT_AddIndex:
 				strtype = "ADD INDEX";
 				break;
@@ -155,9 +207,6 @@ get_altertable_subcmdtypes(PG_FUNCTION_ARGS)
 				break;
 			case AT_AddConstraint:
 				strtype = "ADD CONSTRAINT";
-				break;
-			case AT_AddConstraintRecurse:
-				strtype = "ADD CONSTRAINT (and recurse)";
 				break;
 			case AT_ReAddConstraint:
 				strtype = "(re) ADD CONSTRAINT";
@@ -168,17 +217,11 @@ get_altertable_subcmdtypes(PG_FUNCTION_ARGS)
 			case AT_ValidateConstraint:
 				strtype = "VALIDATE CONSTRAINT";
 				break;
-			case AT_ValidateConstraintRecurse:
-				strtype = "VALIDATE CONSTRAINT (and recurse)";
-				break;
 			case AT_AddIndexConstraint:
 				strtype = "ADD CONSTRAINT (using index)";
 				break;
 			case AT_DropConstraint:
 				strtype = "DROP CONSTRAINT";
-				break;
-			case AT_DropConstraintRecurse:
-				strtype = "DROP CONSTRAINT (and recurse)";
 				break;
 			case AT_ReAddComment:
 				strtype = "(re) ADD COMMENT";
@@ -204,14 +247,6 @@ get_altertable_subcmdtypes(PG_FUNCTION_ARGS)
 			case AT_SetUnLogged:
 				strtype = "SET UNLOGGED";
 				break;
-#if PG_VERSION_NUM < 120000
-			case AT_AddOids:
-				strtype = "ADD OIDS";
-				break;
-			case AT_AddOidsRecurse:
-				strtype = "ADD OIDS (and recurse)";
-				break;
-#endif
 			case AT_DropOids:
 				strtype = "DROP OIDS";
 				break;
@@ -306,5 +341,5 @@ get_altertable_subcmdtypes(PG_FUNCTION_ARGS)
 	if (astate == NULL)
 		elog(ERROR, "empty alter table subcommand list");
 
-	PG_RETURN_ARRAYTYPE_P(makeArrayResult(astate, CurrentMemoryContext));
+	PG_RETURN_ARRAYTYPE_P(DatumGetPointer(makeArrayResult(astate, CurrentMemoryContext)));
 }

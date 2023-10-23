@@ -35,14 +35,12 @@ cat << EOM
 *******************FROM VERSION $from_version******************
 
 EOM
-make_and_test "9.5" $from_version
-make_and_test "9.6" $from_version
-make_and_test "10" $from_version
 make_and_test "11" $from_version
 make_and_test "12" $from_version
 make_and_test "13" $from_version
+make_and_test "14" $from_version
+make_and_test "15" $from_version
+make_and_test "16" $from_version
 }
-test_all_versions "2.0"
-test_all_versions "1.7"
-test_all_versions "1.6"
-#test_all_versions "1.5"
+test_all_versions "2.2"
+test_all_versions "2.1"

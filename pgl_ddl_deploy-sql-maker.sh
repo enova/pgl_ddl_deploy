@@ -2,8 +2,8 @@
 
 set -eu
 
-last_version=2.0
-new_version=2.1
+last_version=2.1
+new_version=2.2
 last_version_file=pgl_ddl_deploy--${last_version}.sql
 new_version_file=pgl_ddl_deploy--${new_version}.sql
 update_file=pgl_ddl_deploy--${last_version}--${new_version}.sql
@@ -37,6 +37,8 @@ create_update_file_with_header
 
 # Add view and function changes
 add_file functions/execute_queued_ddl.sql $update_file
+add_file functions/get_altertable_subcmdinfo.sql $update_file
+add_file functions/subscriber_command.sql $update_file
 
 # Only copy diff and new files after last version, and add the update script
 cp $last_version_file $new_version_file
