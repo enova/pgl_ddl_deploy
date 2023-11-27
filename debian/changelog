@@ -1,3 +1,9 @@
+pgl-ddl-deploy (2.2.1-1) unstable; urgency=medium
+
+  * Fix 2.2 upgrade scripts
+
+ -- Jeremy Finzel <jfinzel@enova.com>  Mon, 27 Nov 2023 12:39:52 -0600
+
 pgl-ddl-deploy (2.2.0-1) unstable; urgency=medium
 
   * Support for Postgres 16
