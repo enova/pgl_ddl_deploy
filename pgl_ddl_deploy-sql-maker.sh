@@ -36,9 +36,12 @@ d=$2
 create_update_file_with_header
 
 # Add view and function changes
+add_file schema/2.2.sql $update_file
 add_file functions/execute_queued_ddl.sql $update_file
 add_file functions/get_altertable_subcmdinfo.sql $update_file
 add_file functions/subscriber_command.sql $update_file
+add_file views/event_trigger_schema.sql $update_file
+add_file schema/2.2_post.sql $update_file
 
 # Only copy diff and new files after last version, and add the update script
 cp $last_version_file $new_version_file
