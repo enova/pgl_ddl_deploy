@@ -144,7 +144,7 @@ TABLE public.foo;
 Try cancel_then_terminate, which should first try to cancel
 ****/
 -- This process should be killed
-\! echo "BEGIN; SELECT * FROM public.foo;\n\! sleep 15" | psql contrib_regression > /dev/null 2>&1 &
+\! echo "BEGIN; SELECT * FROM public.foo;\! sleep 15" | psql contrib_regression > /dev/null 2>&1 &
 
 -- This process should not be killed
 \! psql contrib_regression -c "BEGIN; INSERT INTO public.bar (bla) VALUES (1); SELECT pg_sleep(5); COMMIT;" > /dev/null 2>&1 &
